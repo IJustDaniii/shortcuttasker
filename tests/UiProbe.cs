@@ -25,5 +25,15 @@ class UiProbe
             editor.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
             image.Save("build\\editor-app.png", ImageFormat.Png);
         }
+        using (AppPicker picker = new AppPicker(true, true))
+        using (Bitmap image = new Bitmap(picker.Width, picker.Height))
+        {
+            picker.StartPosition = FormStartPosition.Manual;
+            picker.Location = new Point(-10000, -10000);
+            picker.Show();
+            for (int i = 0; i < 80; ++i) { Application.DoEvents(); System.Threading.Thread.Sleep(100); }
+            picker.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
+            image.Save("build\\picker.png", ImageFormat.Png);
+        }
     }
 }

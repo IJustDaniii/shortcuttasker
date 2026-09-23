@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Automation;
 
@@ -24,6 +25,8 @@ namespace AtajosLibres
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
         [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int length);
+        [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr window);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
         [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint first, uint second, bool attach);
         [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
@@ -35,14 +38,15 @@ namespace AtajosLibres
             if (string.IsNullOrWhiteSpace(target)) throw new ArgumentException("Indica una aplicación, archivo o carpeta.");
             string process = NormalizeProcessName(appProcess);
             string fullPath = null;
-            if (string.IsNullOrEmpty(process) && target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target))
+            if (target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target) &&
+                (string.IsNullOrEmpty(process) || string.Equals(process, Path.GetFileNameWithoutExtension(target), StringComparison.OrdinalIgnoreCase)))
             {
                 fullPath = Path.GetFullPath(target);
                 process = Path.GetFileNameWithoutExtension(target);
             }
             if (!string.IsNullOrEmpty(process))
             {
-                IntPtr existing = FindWindow(process, fullPath);
+                IntPtr existing = FindWindow(process, fullPath, null);
                 if (existing != IntPtr.Zero)
                 {
                     Activate(existing);
@@ -54,8 +58,28 @@ namespace AtajosLibres
 
         public static void SendShortcut(string process, Modifiers modifiers, int key)
         {
+            SendShortcutToApp(process, null, null, modifiers, key);
+        }
+
+        public static void SendShortcutToApp(string process, string launchTarget, string windowTitle, Modifiers modifiers, int key)
+        {
             if (key <= 0 || key > 255) throw new ArgumentException("Elige la tecla de la acción.");
-            IntPtr window = FindWindow(NormalizeProcessName(process), null);
+            process = NormalizeProcessName(process);
+            if (process.Length == 0) throw new ArgumentException("No se conoce el proceso de la aplicación.");
+            string fullPath = null;
+            if (!string.IsNullOrEmpty(launchTarget) && launchTarget.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(launchTarget) && string.Equals(process, Path.GetFileNameWithoutExtension(launchTarget), StringComparison.OrdinalIgnoreCase))
+                fullPath = Path.GetFullPath(launchTarget);
+            IntPtr window = FindWindow(process, fullPath, windowTitle);
+            if (window == IntPtr.Zero && !string.IsNullOrEmpty(launchTarget))
+            {
+                Process.Start(new ProcessStartInfo(launchTarget) { UseShellExecute = true });
+                for (int i = 0; i < 80 && window == IntPtr.Zero; ++i)
+                {
+                    Thread.Sleep(100);
+                    window = FindWindow(process, fullPath, windowTitle);
+                }
+            }
             if (window == IntPtr.Zero) throw new InvalidOperationException("La aplicación no está abierta o no tiene ventana visible.");
             Activate(window);
             // Release all keys in the same SendInput batch so toggles never leave a modifier pressed.
@@ -78,7 +102,7 @@ namespace AtajosLibres
         public static void ToggleDiscordParticipant(string participant)
         {
             if (string.IsNullOrWhiteSpace(participant)) throw new ArgumentException("Indica el nombre visible del participante.");
-            IntPtr window = FindWindow("Discord", null);
+            IntPtr window = FindWindow("Discord", null, null);
             if (window == IntPtr.Zero) throw new InvalidOperationException("Discord debe estar abierto.");
             Activate(window);
             AutomationElement root = AutomationElement.FromHandle(window);
@@ -156,7 +180,7 @@ namespace AtajosLibres
             return value;
         }
 
-        private static IntPtr FindWindow(string process, string fullPath)
+        private static IntPtr FindWindow(string process, string fullPath, string title)
         {
             if (string.IsNullOrEmpty(process)) return IntPtr.Zero;
             HashSet<int> ids = new HashSet<int>();
@@ -176,7 +200,7 @@ namespace AtajosLibres
             {
                 uint pid;
                 GetWindowThreadProcessId(window, out pid);
-                if (ids.Contains((int)pid) && IsWindowVisible(window))
+                if (ids.Contains((int)pid) && IsWindowVisible(window) && MatchesTitle(window, title))
                 {
                     found = window;
                     return false;
@@ -184,6 +208,16 @@ namespace AtajosLibres
                 return true;
             }, IntPtr.Zero);
             return found;
+        }
+
+        private static bool MatchesTitle(IntPtr window, string title)
+        {
+            if (string.IsNullOrEmpty(title)) return true;
+            int length = GetWindowTextLength(window);
+            if (length != title.Length) return false;
+            StringBuilder actual = new StringBuilder(length + 1);
+            GetWindowText(window, actual, actual.Capacity);
+            return string.Equals(actual.ToString(), title, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void Activate(IntPtr window)

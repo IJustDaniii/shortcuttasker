@@ -18,6 +18,12 @@ Descarga `ShortcutTasker-Setup.exe` desde [Releases](https://github.com/IJustDan
 
 Los controles de Discord usan sus [atajos oficiales para Windows](https://support.discord.com/hc/en-us/articles/225977308--Windows-Discord-Hotkeys). Si personalizas esos atajos en Discord, usa la acción genérica con las teclas nuevas. El volumen individual de participantes se ajusta en el menú de cada persona, como indica la [ayuda de Discord](https://support.discord.com/hc/en-us/articles/205287897-How-do-I-adjust-the-volume-level-of-individual-users-in-my-server).
 
+## Elegir una app instalada (1.1.0)
+
+En **Nuevo atajo**, elige **Abrir aplicación** o **Enviar atajo a una aplicación** y pulsa **Instaladas…**. Escribe parte del nombre y selecciona la app. ShortcutTasker guarda la forma de abrirla y, cuando Windows lo permite, detecta su proceso. La lista procede de la carpeta de aplicaciones de Windows: [Microsoft explica que las apps que no aparecen en Inicio pueden faltar en ese catálogo](https://learn.microsoft.com/en-us/windows/configuration/store/find-aumid).
+
+Para enviar teclas a una app cuyo proceso no aparezca, ábrela y pulsa **Ventana…**. Se guardará su proceso y el título de esa ventana para no enviar el atajo a otra por error. Si el título cambia, tendrás que volver a elegir la ventana. También puedes seguir escribiendo el proceso manualmente. Al elegir una app instalada, la acción de enviar teclas puede abrirla si estaba cerrada y esperará hasta ocho segundos a que aparezca su ventana.
+
 ## Actualizaciones
 
 Al iniciarse, ShortcutTasker consulta la última versión publicada en GitHub. Si hay una versión superior con instalador, ofrece instalarla. Al elegir «No», volverá a ofrecerla en el próximo inicio. También puedes pulsar **Buscar actualizaciones**. La descarga se comprueba con el SHA-256 publicado por GitHub antes de ejecutarse. Los cambios de código sin una nueva versión publicada no activan el aviso, porque no tienen instalador que aplicar.

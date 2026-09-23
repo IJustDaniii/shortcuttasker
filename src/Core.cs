@@ -19,11 +19,14 @@ namespace AtajosLibres
         public string Action { get; set; }
         public string Target { get; set; }
         public string AppProcess { get; set; }
+        public string AppLaunchTarget { get; set; }
+        public string AppDisplayName { get; set; }
+        public string AppWindowTitle { get; set; }
         public Modifiers AppModifiers { get; set; }
         public int AppKey { get; set; }
         public bool Enabled { get; set; }
 
-        public Shortcut() { Name = ""; Action = "open"; Target = ""; AppProcess = ""; Enabled = true; }
+        public Shortcut() { Name = ""; Action = "open"; Target = ""; AppProcess = ""; AppLaunchTarget = ""; AppDisplayName = ""; AppWindowTitle = ""; Enabled = true; }
         public Shortcut Clone()
         {
             return (Shortcut)MemberwiseClone();
@@ -405,7 +408,8 @@ namespace AtajosLibres
             }
             else if (shortcut.Action == "appkey")
             {
-                AppAutomation.SendShortcut(shortcut.AppProcess, shortcut.AppModifiers, shortcut.AppKey);
+                AppAutomation.SendShortcutToApp(string.IsNullOrEmpty(shortcut.AppProcess) ? target : shortcut.AppProcess,
+                    shortcut.AppLaunchTarget, shortcut.AppWindowTitle, shortcut.AppModifiers, shortcut.AppKey);
             }
             else if (shortcut.Action == "discord_mute")
             {

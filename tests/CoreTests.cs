@@ -9,6 +9,7 @@ class CoreTests
         if (!condition) throw new Exception(name);
     }
 
+    [STAThread]
     static void Main()
     {
         ShortcutMatcher matcher = new ShortcutMatcher();
@@ -64,6 +65,15 @@ class CoreTests
         }
         catch (System.IO.InvalidDataException) { }
 
-        Console.WriteLine("10 behavioral checks passed");
+        InstalledApp desktop = InstalledApps.CreateEntry("Prueba", "Prueba.App", @"C:\Apps\Prueba.exe");
+        Check(desktop.LaunchTarget == @"shell:AppsFolder\Prueba.App" && desktop.ProcessName == "Prueba", "Catalog desktop app");
+        InstalledApp packaged = InstalledApps.CreateEntry("Paquete", "Ejemplo.Paquete_123!App", "");
+        Check(packaged.LaunchTarget == @"shell:AppsFolder\Ejemplo.Paquete_123!App" && packaged.ProcessName == "", "Catalog packaged app");
+        List<InstalledApp> detected = InstalledApps.Discover();
+        Check(detected.Count > 0, "Windows installed-app catalog");
+        InstalledApp knownPackage = detected.Find(delegate(InstalledApp app) { return app.LaunchTarget.StartsWith(@"shell:AppsFolder\OpenAI.Codex_"); });
+        if (knownPackage != null) Check(InstalledApps.ResolvePackagedProcess(knownPackage.LaunchTarget) == "ChatGPT", "Packaged app process");
+
+        Console.WriteLine("13 behavioral checks passed");
     }
 }

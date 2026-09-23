@@ -128,7 +128,8 @@ namespace AtajosLibres
                 ListViewItem item = new ListViewItem(ShortcutNames.Display(shortcut));
                 item.SubItems.Add(shortcut.Name);
                 item.SubItems.Add(ShortcutNames.ActionDisplay(shortcut.Action));
-                item.SubItems.Add(shortcut.Target);
+                item.SubItems.Add(shortcut.Action == "appkey" && !string.IsNullOrEmpty(shortcut.AppDisplayName)
+                    ? shortcut.AppDisplayName : shortcut.Target);
                 item.SubItems.Add(shortcut.Enabled ? "Activo" : "Pausado");
                 item.Tag = shortcut;
                 if (!shortcut.Enabled) item.ForeColor = Ui.Muted;
@@ -314,7 +315,9 @@ namespace AtajosLibres
         private CheckBox appWin, appCtrl, appAlt, appShift;
         private ComboBox keyBox, actionBox, mediaBox, appKeyBox;
         private Label targetLabel, processLabel, appKeyLabel, appModLabel;
-        private Button browse;
+        private Button browse, installedButton, runningButton;
+        private string selectedAppLaunchTarget = "", selectedAppName = "", selectedWindowTitle = "";
+        private bool changingAppSelection;
         private bool originalEnabled;
         public Shortcut Result { get; private set; }
 
@@ -379,20 +382,33 @@ namespace AtajosLibres
             Controls.Add(actionBox);
 
             targetLabel = LabelAt("Aplicación, archivo o carpeta", 232);
-            targetBox = new TextBox { Left = 24, Top = 258, Width = 392 };
+            targetBox = new TextBox { Left = 24, Top = 258, Width = 280 };
+            targetBox.TextChanged += delegate
+            {
+                if (!changingAppSelection) { selectedAppLaunchTarget = ""; selectedAppName = ""; selectedWindowTitle = ""; }
+            };
             Controls.Add(targetBox);
             browse = Ui.Button("Buscar…", 80);
-            browse.Left = 424; browse.Top = 256;
+            browse.Left = 312; browse.Top = 256;
             browse.Click += Browse;
             Controls.Add(browse);
+            installedButton = Ui.Button("Instaladas…", 104);
+            installedButton.Left = 400; installedButton.Top = 256;
+            installedButton.Click += SelectInstalledApp;
+            Controls.Add(installedButton);
             mediaBox = new ComboBox { Left = 24, Top = 258, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
             mediaBox.Items.AddRange(new object[] { "Reproducir / pausar", "Siguiente pista", "Pista anterior", "Subir volumen", "Bajar volumen", "Silenciar" });
             mediaBox.SelectedIndex = 0;
             Controls.Add(mediaBox);
 
             processLabel = LabelAt("Nombre del proceso si ya está abierto (opcional)", 310);
-            processBox = new TextBox { Left = 24, Top = 334, Width = 480 };
+            processBox = new TextBox { Left = 24, Top = 334, Width = 392 };
+            processBox.TextChanged += delegate { if (!changingAppSelection) selectedWindowTitle = ""; };
             Controls.Add(processBox);
+            runningButton = Ui.Button("Ventana…", 80);
+            runningButton.Left = 424; runningButton.Top = 332;
+            runningButton.Click += SelectRunningApp;
+            Controls.Add(runningButton);
             appModLabel = LabelAt("Teclas que recibe la aplicación", 377);
             FlowLayoutPanel appMods = new FlowLayoutPanel { Left = 24, Top = 401, Width = 277, Height = 35 };
             appWin = new CheckBox { Text = "Win", Width = 52 }; appCtrl = new CheckBox { Text = "Ctrl", Width = 54 };
@@ -422,21 +438,27 @@ namespace AtajosLibres
             int action = actionBox.SelectedIndex;
             targetLabel.Text = action == 0 ? "Aplicación, archivo o carpeta" : action == 1 ? "Dirección web" :
                 action == 2 ? "Texto que se escribirá" : action == 3 ? "Comando de Windows" :
-                action == 5 ? "Proceso de la aplicación (por ejemplo, Discord)" :
+                action == 5 ? "Aplicación o proceso (por ejemplo, Discord)" :
                 action == 8 ? "Nombre visible de la persona en Discord" : "Control";
             targetLabel.Visible = action < 4 || action == 5 || action == 8;
             targetBox.Visible = action < 4 || action == 5 || action == 8;
             targetBox.Multiline = action == 2;
             targetBox.Height = action == 2 ? 70 : 27;
             browse.Visible = action == 0;
-            targetBox.Width = action == 0 ? 392 : 480;
+            installedButton.Visible = action == 0 || action == 5;
+            targetBox.Width = action == 0 ? 280 : action == 5 ? 376 : 480;
+            installedButton.Left = action == 5 ? 408 : 400;
+            installedButton.Width = action == 5 ? 96 : 104;
             mediaBox.Visible = action == 4;
-            processLabel.Visible = processBox.Visible = action == 0;
+            processLabel.Visible = processBox.Visible = action == 0 || action == 5;
+            processLabel.Text = action == 5 ? "Proceso que recibirá el atajo" : "Nombre del proceso si ya está abierto (opcional)";
+            processBox.Width = action == 5 ? 392 : 480;
+            runningButton.Visible = action == 5;
             appModLabel.Visible = appKeyLabel.Visible = appKeyBox.Visible = action == 5;
             appWin.Visible = appCtrl.Visible = appAlt.Visible = appShift.Visible = action == 5;
             if (action == 0) targetBox.PlaceholderTextCompat("C:\\Ruta\\Programa.exe o shell:AppsFolder\\...");
             else if (action == 1) targetBox.PlaceholderTextCompat("https://ejemplo.com");
-            else if (action == 5) targetBox.PlaceholderTextCompat("Discord, Spotify, chrome...");
+            else if (action == 5) targetBox.PlaceholderTextCompat("Elige una app instalada o escribe el proceso");
             else targetBox.PlaceholderTextCompat("");
         }
 
@@ -458,6 +480,43 @@ namespace AtajosLibres
             }
         }
 
+        private void SelectInstalledApp(object sender, EventArgs e)
+        {
+            SelectApp(false);
+        }
+
+        private void SelectRunningApp(object sender, EventArgs e)
+        {
+            SelectApp(true);
+        }
+
+        private void SelectApp(bool running)
+        {
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                using (AppPicker picker = new AppPicker(running, actionBox.SelectedIndex == 5))
+                {
+                    Cursor = Cursors.Default;
+                    if (running) picker.SelectRunningTab();
+                    if (picker.ShowDialog(this) != DialogResult.OK) return;
+                    InstalledApp app = picker.Selection;
+                    changingAppSelection = true;
+                    try
+                    {
+                        targetBox.Text = actionBox.SelectedIndex == 0 ? app.LaunchTarget : app.Name;
+                        processBox.Text = app.ProcessName;
+                        selectedAppLaunchTarget = actionBox.SelectedIndex == 5 ? app.LaunchTarget : "";
+                        selectedAppName = actionBox.SelectedIndex == 5 ? app.Name : "";
+                        selectedWindowTitle = app.WindowTitle ?? "";
+                    }
+                    finally { changingAppSelection = false; }
+                }
+            }
+            catch (Exception ex) { Warn("No se pudo leer el catálogo de aplicaciones: " + ex.Message); }
+            finally { Cursor = Cursors.Default; }
+        }
+
         private void Fill(Shortcut shortcut)
         {
             nameBox.Text = shortcut.Name;
@@ -471,8 +530,17 @@ namespace AtajosLibres
                 shortcut.Action == "text" ? 2 : shortcut.Action == "command" ? 3 : shortcut.Action == "media" ? 4 :
                 shortcut.Action == "appkey" ? 5 : shortcut.Action == "discord_mute" ? 6 : shortcut.Action == "discord_deafen" ? 7 : 8;
             if (shortcut.Action == "media") mediaBox.SelectedItem = shortcut.Target;
-            else targetBox.Text = shortcut.Target;
+            else
+            {
+                changingAppSelection = true;
+                targetBox.Text = shortcut.Action == "appkey" && !string.IsNullOrEmpty(shortcut.AppDisplayName)
+                    ? shortcut.AppDisplayName : shortcut.Target;
+                changingAppSelection = false;
+            }
             processBox.Text = shortcut.AppProcess;
+            selectedAppLaunchTarget = shortcut.AppLaunchTarget ?? "";
+            selectedAppName = shortcut.AppDisplayName ?? "";
+            selectedWindowTitle = shortcut.AppWindowTitle ?? "";
             appWin.Checked = (shortcut.AppModifiers & Modifiers.Win) != 0;
             appCtrl.Checked = (shortcut.AppModifiers & Modifiers.Ctrl) != 0;
             appAlt.Checked = (shortcut.AppModifiers & Modifiers.Alt) != 0;
@@ -505,8 +573,12 @@ namespace AtajosLibres
                 { Warn("La web debe empezar por https:// o http://."); return; }
             }
             string process;
-            try { process = AppAutomation.NormalizeProcessName(actionBox.SelectedIndex == 5 ? target : processBox.Text); }
+            string processInput = processBox.Text.Trim();
+            if (actionBox.SelectedIndex == 5 && processInput.Length == 0 && selectedAppName.Length == 0) processInput = target;
+            try { process = AppAutomation.NormalizeProcessName(processInput); }
             catch (ArgumentException ex) { Warn(ex.Message); return; }
+            if (actionBox.SelectedIndex == 5 && process.Length == 0)
+            { Warn("No se detectó el proceso. Abre la aplicación y elige su ventana."); return; }
             Modifiers appMods = Modifiers.None;
             if (appWin.Checked) appMods |= Modifiers.Win;
             if (appCtrl.Checked) appMods |= Modifiers.Ctrl;
@@ -515,6 +587,9 @@ namespace AtajosLibres
             string[] actions = { "open", "web", "text", "command", "media", "appkey", "discord_mute", "discord_deafen", "discord_person" };
             Result = new Shortcut { Name = name, Modifiers = mods, Key = key,
                 Action = actions[actionBox.SelectedIndex], Target = target, AppProcess = process,
+                AppLaunchTarget = actionBox.SelectedIndex == 5 ? selectedAppLaunchTarget : "",
+                AppDisplayName = actionBox.SelectedIndex == 5 ? selectedAppName : "",
+                AppWindowTitle = actionBox.SelectedIndex == 5 ? selectedWindowTitle : "",
                 AppModifiers = appMods, AppKey = ((KeyOption)appKeyBox.SelectedItem).Code, Enabled = originalEnabled };
             DialogResult = DialogResult.OK;
             Close();

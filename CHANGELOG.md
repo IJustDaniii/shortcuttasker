@@ -1,5 +1,12 @@
 # Cambios
 
+## 1.1.0
+
+- Selector con búsqueda de aplicaciones registradas en el menú Inicio de Windows.
+- Detección del ejecutable de apps de escritorio y del proceso de apps empaquetadas cuando Windows lo ofrece.
+- Selector de ventanas abiertas para dirigir atajos a una app cuyo proceso no se detecte automáticamente.
+- La acción de enviar teclas puede abrir la app elegida y esperar a que aparezca su ventana.
+
 ## 1.0.0
 
 - Instalador de usuario con acceso en Inicio, inicio automático y desinstalación.
