@@ -1,5 +1,11 @@
 # Cambios
 
+## 1.1.2
+
+- Los controles de voz de Discord y reproducción de Spotify se ejecutan al pulsar la última tecla, sin esperar a soltar la combinación.
+- Discord y Spotify reciben la acción por sus controles accesibles en segundo plano; ShortcutTasker no abre ni activa sus ventanas. La app debe estar abierta y mostrar esos controles.
+- Los atajos que abren aplicaciones conservan su ejecución al soltar las teclas modificadoras.
+
 ## 1.1.1
 
 - Al elegir una aplicación instalada, muestra sus acciones directamente debajo: Discord ofrece silenciar/activar el micrófono y ensordecer/volver a oír; Spotify ofrece reproducir/pausar, siguiente canción y canción anterior.

@@ -141,7 +141,8 @@ namespace AtajosLibres
                 if (shortcut.Enabled && shortcut.Key == key && shortcut.Modifiers == current)
                 {
                     consumedKeys.Add(key);
-                    pending.Add(shortcut);
+                    if (RunOnKeyDown(shortcut.Action)) result.Run.Add(shortcut);
+                    else pending.Add(shortcut);
                     result.Suppress = true;
                     result.MaskMenu = (current & (Modifiers.Win | Modifiers.Alt)) != 0;
                     maskOnModifierRelease |= result.MaskMenu;
@@ -149,6 +150,12 @@ namespace AtajosLibres
                 }
             }
             return result;
+        }
+
+        private static bool RunOnKeyDown(string action)
+        {
+            return action == "discord_mute" || action == "discord_deafen" ||
+                action == "spotify_playpause" || action == "spotify_next" || action == "spotify_previous";
         }
 
         public void ReconcileModifiers(Func<int, bool> isPressed)
@@ -352,16 +359,6 @@ namespace AtajosLibres
     {
         public static void Run(Shortcut shortcut)
         {
-            for (int attempt = 0; attempt < 200; ++attempt)
-            {
-                if ((Native.GetAsyncKeyState(0x5B) & 0x8000) == 0 &&
-                    (Native.GetAsyncKeyState(0x5C) & 0x8000) == 0 &&
-                    (Native.GetAsyncKeyState(0x10) & 0x8000) == 0 &&
-                    (Native.GetAsyncKeyState(0x11) & 0x8000) == 0 &&
-                    (Native.GetAsyncKeyState(0x12) & 0x8000) == 0) break;
-                if (attempt == 199) throw new Exception("Las teclas del atajo siguen pulsadas.");
-                Thread.Sleep(10);
-            }
             string target = shortcut.Target == null ? "" : shortcut.Target.Trim();
             if (shortcut.Action == "open")
             {
@@ -413,15 +410,15 @@ namespace AtajosLibres
             }
             else if (shortcut.Action == "discord_mute")
             {
-                AppAutomation.SendShortcut("Discord", Modifiers.Ctrl | Modifiers.Shift, 0x4D);
+                AppAutomation.ToggleDiscordVoice(false);
             }
             else if (shortcut.Action == "discord_deafen")
             {
-                AppAutomation.SendShortcut("Discord", Modifiers.Ctrl | Modifiers.Shift, 0x44);
+                AppAutomation.ToggleDiscordVoice(true);
             }
             else if (shortcut.Action == "spotify_playpause" || shortcut.Action == "spotify_next" || shortcut.Action == "spotify_previous")
             {
-                AppAutomation.ControlSpotify(shortcut.Action, shortcut.AppLaunchTarget);
+                AppAutomation.ControlSpotify(shortcut.Action);
             }
             else if (shortcut.Action == "discord_person")
             {

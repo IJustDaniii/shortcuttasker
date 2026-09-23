@@ -99,26 +99,14 @@ namespace AtajosLibres
                 throw new Win32Exception(Marshal.GetLastWin32Error());
         }
 
-        public static void ControlSpotify(string action, string launchTarget)
+        public static void ControlSpotify(string action)
         {
             if (action != "spotify_playpause" && action != "spotify_next" && action != "spotify_previous")
                 throw new ArgumentException("Control de Spotify desconocido.");
             IntPtr window = FindWindow("Spotify", null, null);
-            if (window == IntPtr.Zero && !string.IsNullOrEmpty(launchTarget))
-            {
-                Process.Start(new ProcessStartInfo(launchTarget) { UseShellExecute = true });
-                for (int i = 0; i < 80 && window == IntPtr.Zero; ++i)
-                {
-                    Thread.Sleep(100);
-                    window = FindWindow("Spotify", null, null);
-                }
-            }
-            if (window == IntPtr.Zero) throw new InvalidOperationException("Spotify debe estar abierto.");
-            if (TryInvokeSpotifyPlayer(window, action)) return;
-            // Spotify's accessible buttons can vary with its UI language and version.
-            int key = action == "spotify_playpause" ? 0x20 : action == "spotify_next" ? 0x27 : 0x25;
-            Modifiers modifiers = action == "spotify_playpause" ? Modifiers.None : Modifiers.Ctrl;
-            SendShortcutToApp("Spotify", null, null, modifiers, key);
+            if (window == IntPtr.Zero) throw new InvalidOperationException("Spotify no tiene una ventana disponible. ShortcutTasker no abrirá la aplicación para ejecutar esta acción.");
+            if (!TryInvokeSpotifyPlayer(window, action))
+                throw new InvalidOperationException("No se encontraron los controles accesibles del reproductor de Spotify.");
         }
 
         private static bool TryInvokeSpotifyPlayer(IntPtr window, string action)
@@ -164,6 +152,60 @@ namespace AtajosLibres
             }
             catch (ElementNotAvailableException) { }
             catch (InvalidOperationException) { }
+            catch (COMException) { }
+            return false;
+        }
+
+        public static void ToggleDiscordVoice(bool deafen)
+        {
+            IntPtr window = FindWindow("Discord", null, null);
+            if (window == IntPtr.Zero) throw new InvalidOperationException("Discord no tiene una ventana disponible. ShortcutTasker no abrirá la aplicación para ejecutar esta acción.");
+            AutomationElement root = AutomationElement.FromHandle(window);
+            AutomationElementCollection buttons = root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+            AutomationElement chosen = null;
+            foreach (AutomationElement button in buttons)
+            {
+                string name;
+                try { name = button.Current.Name ?? ""; }
+                catch (ElementNotAvailableException) { continue; }
+                if (!IsVoiceButton(button, deafen, name)) continue;
+                object pattern;
+                if (!button.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) continue;
+                if (chosen != null) throw new InvalidOperationException("Discord muestra más de un control válido; no se cambió ningún ajuste.");
+                chosen = button;
+            }
+            if (chosen == null)
+                throw new InvalidOperationException(deafen
+                    ? "No se encuentra el botón de ensordecimiento de Discord. Comprueba que Discord está abierto y conectado a una llamada."
+                    : "No se encuentra el botón de micrófono de Discord. Comprueba que Discord está abierto y conectado a una llamada.");
+            ((InvokePattern)chosen.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        }
+
+        private static bool IsVoiceButton(AutomationElement button, bool deafen, string name)
+        {
+            string normalized = name.Trim().ToLowerInvariant();
+            bool voiceAction = deafen
+                ? normalized.Contains("ensordec") || normalized.Contains("deafen")
+                : normalized.Contains("silenciar") || normalized.Contains("microfono") || normalized.Contains("micrófono") ||
+                    normalized == "mute" || normalized.StartsWith("unmute");
+            if (!voiceAction) return false;
+            AutomationElement parent = button;
+            for (int i = 0; i < 6 && parent != null; ++i)
+            {
+                try
+                {
+                    if (parent.Current.ControlType == ControlType.Group)
+                    {
+                        string group = (parent.Current.Name ?? "").Trim();
+                        if (group.Equals("Estado y ajustes del usuario", StringComparison.OrdinalIgnoreCase) ||
+                            group.Equals("User status and settings", StringComparison.OrdinalIgnoreCase) ||
+                            group.Equals("User Status and Settings", StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+                    parent = TreeWalker.ControlViewWalker.GetParent(parent);
+                }
+                catch (ElementNotAvailableException) { return false; }
+            }
             return false;
         }
 

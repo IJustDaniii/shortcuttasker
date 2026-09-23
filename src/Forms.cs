@@ -476,9 +476,14 @@ namespace AtajosLibres
             appActionLabel.Visible = appActionBox.Visible = hasApp;
             AppActionOption selected = appActionBox.SelectedItem as AppActionOption;
             bool sendKeys = hasApp && selected != null && selected.Action == "appkey";
+            bool immediate = hasApp && selected != null &&
+                (selected.Action.StartsWith("discord_", StringComparison.Ordinal) || selected.Action.StartsWith("spotify_", StringComparison.Ordinal));
             processLabel.Visible = processBox.Visible = runningButton.Visible = sendKeys;
             appModLabel.Visible = appKeyLabel.Visible = appKeyBox.Visible = sendKeys;
             appWin.Visible = appCtrl.Visible = appAlt.Visible = appShift.Visible = sendKeys;
+            note.Text = immediate
+                ? "La acción se ejecuta al pulsar la última tecla y no abre la ventana de la aplicación."
+                : "El atajo se ejecuta cuando sueltas las teclas modificadoras.";
             int noteTop = sendKeys ? 530 : hasApp ? 405 : action == 2 ? 350 : 310;
             note.Top = noteTop;
             saveButton.Top = cancelButton.Top = noteTop + 45;
