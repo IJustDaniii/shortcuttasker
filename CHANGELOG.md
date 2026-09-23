@@ -1,5 +1,10 @@
 # Cambios
 
+## 1.1.3
+
+- Aclara el formulario vacío: primero hay que seleccionar una app instalada para ver sus acciones.
+- Distingue el texto de apertura de app del aviso de acción inmediata de Discord y Spotify.
+
 ## 1.1.2
 
 - Los controles de voz de Discord y reproducción de Spotify se ejecutan al pulsar la última tecla, sin esperar a soltar la combinación.

@@ -74,7 +74,7 @@ namespace AtajosLibres
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(ApiUrl);
             request.Accept = "application/vnd.github+json";
-            request.UserAgent = "ShortcutTasker/1.1.2";
+            request.UserAgent = "ShortcutTasker/1.1.3";
             request.Timeout = 8000;
             request.ReadWriteTimeout = 8000;
             string json;
@@ -125,7 +125,7 @@ namespace AtajosLibres
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(info.Url);
-                request.UserAgent = "ShortcutTasker/1.1.2";
+                request.UserAgent = "ShortcutTasker/1.1.3";
                 request.Timeout = 15000;
                 request.ReadWriteTimeout = 15000;
                 using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())

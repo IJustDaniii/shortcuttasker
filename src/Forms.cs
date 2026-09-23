@@ -483,7 +483,11 @@ namespace AtajosLibres
             appWin.Visible = appCtrl.Visible = appAlt.Visible = appShift.Visible = sendKeys;
             note.Text = immediate
                 ? "La acción se ejecuta al pulsar la última tecla y no abre la ventana de la aplicación."
-                : "El atajo se ejecuta cuando sueltas las teclas modificadoras.";
+                : action == 0 && !hasApp && string.IsNullOrWhiteSpace(targetBox.Text)
+                    ? "Elige una aplicación en «Instaladas…» para ver sus acciones."
+                    : hasApp && selected != null && selected.Action == "open"
+                        ? "Abrir o mostrar la aplicación se ejecuta al soltar la combinación."
+                        : "El atajo se ejecuta cuando sueltas las teclas modificadoras.";
             int noteTop = sendKeys ? 530 : hasApp ? 405 : action == 2 ? 350 : 310;
             note.Top = noteTop;
             saveButton.Top = cancelButton.Top = noteTop + 45;
