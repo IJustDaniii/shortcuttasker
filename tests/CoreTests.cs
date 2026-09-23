@@ -1,12 +1,33 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Windows.Forms;
 using AtajosLibres;
+using Shortcut = AtajosLibres.Shortcut;
 
 class CoreTests
 {
     static void Check(bool condition, string name)
     {
         if (!condition) throw new Exception(name);
+    }
+
+    static Shortcut SaveAppAction(string appName, string process, string launchTarget, string action)
+    {
+        using (ShortcutEditor editor = new ShortcutEditor(null))
+        {
+            BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            Type type = typeof(ShortcutEditor);
+            ((TextBox)type.GetField("nameBox", flags).GetValue(editor)).Text = "Control de prueba";
+            ((CheckBox)type.GetField("win", flags).GetValue(editor)).Checked = true;
+            ((TextBox)type.GetField("targetBox", flags).GetValue(editor)).Text = appName;
+            ((TextBox)type.GetField("processBox", flags).GetValue(editor)).Text = process;
+            type.GetField("selectedAppName", flags).SetValue(editor, appName);
+            type.GetField("selectedAppLaunchTarget", flags).SetValue(editor, launchTarget);
+            type.GetMethod("RefreshAppActions", flags).Invoke(editor, new object[] { action });
+            type.GetMethod("Save", flags).Invoke(editor, new object[] { null, EventArgs.Empty });
+            return editor.Result;
+        }
     }
 
     [STAThread]
@@ -69,11 +90,23 @@ class CoreTests
         Check(desktop.LaunchTarget == @"shell:AppsFolder\Prueba.App" && desktop.ProcessName == "Prueba", "Catalog desktop app");
         InstalledApp packaged = InstalledApps.CreateEntry("Paquete", "Ejemplo.Paquete_123!App", "");
         Check(packaged.LaunchTarget == @"shell:AppsFolder\Ejemplo.Paquete_123!App" && packaged.ProcessName == "", "Catalog packaged app");
+        List<AppActionOption> discord = AppActionCatalog.ForApp("Discord", "Discord", "");
+        Check(discord.Count == 3 && discord[0].Action == "open" && discord[1].Action == "discord_mute" &&
+            discord[2].Action == "discord_deafen", "Discord offers only its two voice controls");
+        List<AppActionOption> spotify = AppActionCatalog.ForApp("Spotify", "Spotify", "");
+        Check(spotify.Count == 4 && spotify[1].Action == "spotify_playpause" && spotify[2].Action == "spotify_next" &&
+            spotify[3].Action == "spotify_previous", "Spotify offers three playback controls");
+        List<AppActionOption> other = AppActionCatalog.ForApp("Editor", "editor", @"C:\Apps\editor.exe");
+        Check(other.Count == 2 && other[1].Action == "appkey", "Other apps offer a custom shortcut");
+        Shortcut discordRule = SaveAppAction("Discord", "Discord", @"shell:AppsFolder\com.squirrel.Discord.Discord", "discord_mute");
+        Check(discordRule != null && discordRule.Action == "discord_mute" && discordRule.AppDisplayName == "Discord", "Editor saves Discord voice control");
+        Shortcut spotifyRule = SaveAppAction("Spotify", "Spotify", @"shell:AppsFolder\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", "spotify_next");
+        Check(spotifyRule != null && spotifyRule.Action == "spotify_next" && spotifyRule.AppProcess == "Spotify", "Editor saves Spotify playback control");
         List<InstalledApp> detected = InstalledApps.Discover();
         Check(detected.Count > 0, "Windows installed-app catalog");
         InstalledApp knownPackage = detected.Find(delegate(InstalledApp app) { return app.LaunchTarget.StartsWith(@"shell:AppsFolder\OpenAI.Codex_"); });
         if (knownPackage != null) Check(InstalledApps.ResolvePackagedProcess(knownPackage.LaunchTarget) == "ChatGPT", "Packaged app process");
 
-        Console.WriteLine("13 behavioral checks passed");
+        Console.WriteLine("18 behavioral checks passed");
     }
 }

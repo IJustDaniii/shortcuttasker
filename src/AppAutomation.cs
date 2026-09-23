@@ -99,6 +99,74 @@ namespace AtajosLibres
                 throw new Win32Exception(Marshal.GetLastWin32Error());
         }
 
+        public static void ControlSpotify(string action, string launchTarget)
+        {
+            if (action != "spotify_playpause" && action != "spotify_next" && action != "spotify_previous")
+                throw new ArgumentException("Control de Spotify desconocido.");
+            IntPtr window = FindWindow("Spotify", null, null);
+            if (window == IntPtr.Zero && !string.IsNullOrEmpty(launchTarget))
+            {
+                Process.Start(new ProcessStartInfo(launchTarget) { UseShellExecute = true });
+                for (int i = 0; i < 80 && window == IntPtr.Zero; ++i)
+                {
+                    Thread.Sleep(100);
+                    window = FindWindow("Spotify", null, null);
+                }
+            }
+            if (window == IntPtr.Zero) throw new InvalidOperationException("Spotify debe estar abierto.");
+            if (TryInvokeSpotifyPlayer(window, action)) return;
+            // Spotify's accessible buttons can vary with its UI language and version.
+            int key = action == "spotify_playpause" ? 0x20 : action == "spotify_next" ? 0x27 : 0x25;
+            Modifiers modifiers = action == "spotify_playpause" ? Modifiers.None : Modifiers.Ctrl;
+            SendShortcutToApp("Spotify", null, null, modifiers, key);
+        }
+
+        private static bool TryInvokeSpotifyPlayer(IntPtr window, string action)
+        {
+            try
+            {
+                AutomationElement root = AutomationElement.FromHandle(window);
+                AutomationElementCollection buttons = root.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                List<AutomationElement> previous = new List<AutomationElement>();
+                List<AutomationElement> next = new List<AutomationElement>();
+                List<AutomationElement> play = new List<AutomationElement>();
+                foreach (AutomationElement button in buttons)
+                {
+                    if (!button.Current.IsEnabled || button.Current.BoundingRectangle.IsEmpty) continue;
+                    string name = button.Current.Name;
+                    if (name == "Anterior" || name == "Previous" || name == "Previous track") previous.Add(button);
+                    else if (name == "Siguiente" || name == "Next" || name == "Next track") next.Add(button);
+                    else if (name == "Reproducir" || name == "Pausar" || name == "Play" || name == "Pause") play.Add(button);
+                }
+                foreach (AutomationElement prev in previous)
+                    foreach (AutomationElement nxt in next)
+                    {
+                        System.Windows.Rect left = prev.Current.BoundingRectangle;
+                        System.Windows.Rect right = nxt.Current.BoundingRectangle;
+                        if (right.Left <= left.Right || right.Left - left.Right > 160 || Math.Abs(right.Top - left.Top) > 20) continue;
+                        AutomationElement chosen = null;
+                        if (action == "spotify_previous") chosen = prev;
+                        else if (action == "spotify_next") chosen = nxt;
+                        else foreach (AutomationElement candidate in play)
+                        {
+                            System.Windows.Rect middle = candidate.Current.BoundingRectangle;
+                            if (middle.Left > left.Right && middle.Right < right.Left && Math.Abs(middle.Top - left.Top) <= 20)
+                            { chosen = candidate; break; }
+                        }
+                        object pattern;
+                        if (chosen != null && chosen.TryGetCurrentPattern(InvokePattern.Pattern, out pattern))
+                        {
+                            ((InvokePattern)pattern).Invoke();
+                            return true;
+                        }
+                    }
+            }
+            catch (ElementNotAvailableException) { }
+            catch (InvalidOperationException) { }
+            return false;
+        }
+
         public static void ToggleDiscordParticipant(string participant)
         {
             if (string.IsNullOrWhiteSpace(participant)) throw new ArgumentException("Indica el nombre visible del participante.");

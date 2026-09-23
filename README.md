@@ -8,21 +8,15 @@ Descarga `ShortcutTasker-Setup.exe` desde [Releases](https://github.com/IJustDan
 
 **Requisitos:** Windows 10 u 11 y .NET Framework 4.8. El ejecutable y el instalador de esta versión no tienen firma de código. En equipos con Control inteligente de aplicaciones o una política que exija firma, Windows puede bloquearlos; publicar el archivo en GitHub no elimina ese bloqueo. No desactives la protección del sistema solo para instalarlos.
 
-## Acciones nuevas en 1.0.0
+## Acciones de aplicaciones
 
-- **Abrir aplicación:** si ya existe una ventana del mismo ejecutable, la restaura y la activa. Para accesos directos o lanzadores especiales, indica el nombre del proceso en el campo opcional. Para apps empaquetadas `shell:AppsFolder`, Windows gestiona su activación.
-- **Enviar atajo a una aplicación:** selecciona el proceso y la combinación que recibirá esa ventana. La aplicación debe estar abierta y Windows debe permitir activarla.
-- **Discord, micrófono:** alterna silencio con `Ctrl+Mayús+M`.
-- **Discord, audio:** alterna ensordecimiento con `Ctrl+Mayús+D`.
-- **Discord, persona:** indica el nombre visible exacto de una persona en la llamada. ShortcutTasker intenta localizar su control de volumen mediante la accesibilidad de Windows y alternar entre cero y el volumen anterior. Si encuentra varias coincidencias o Discord no expone el control, muestra un error y no cambia ningún volumen. Esta acción depende de la interfaz actual de Discord.
+En **Nuevo atajo**, elige **Aplicación, archivo o carpeta** y pulsa **Instaladas…**. Debajo de la aplicación elegida aparece **Qué hacer con esta aplicación**:
 
-Los controles de Discord usan sus [atajos oficiales para Windows](https://support.discord.com/hc/en-us/articles/225977308--Windows-Discord-Hotkeys). Si personalizas esos atajos en Discord, usa la acción genérica con las teclas nuevas. El volumen individual de participantes se ajusta en el menú de cada persona, como indica la [ayuda de Discord](https://support.discord.com/hc/en-us/articles/205287897-How-do-I-adjust-the-volume-level-of-individual-users-in-my-server).
+- **Discord:** abrir o mostrar la app; silenciar/activar el micrófono; ensordecer/volver a oír. Los dos controles de voz usan los [atajos oficiales de Discord](https://support.discord.com/hc/en-us/articles/225977308--Windows-Discord-Hotkeys).
+- **Spotify:** abrir o mostrar la app; reproducir/pausar; siguiente canción; canción anterior. Se usan los botones accesibles del reproductor y, si no están disponibles, los atajos de teclado de la app.
+- **Otras apps:** abrir o mostrar; enviar una combinación de teclas personalizada.
 
-## Elegir una app instalada (1.1.0)
-
-En **Nuevo atajo**, elige **Abrir aplicación** o **Enviar atajo a una aplicación** y pulsa **Instaladas…**. Escribe parte del nombre y selecciona la app. ShortcutTasker guarda la forma de abrirla y, cuando Windows lo permite, detecta su proceso. La lista procede de la carpeta de aplicaciones de Windows: [Microsoft explica que las apps que no aparecen en Inicio pueden faltar en ese catálogo](https://learn.microsoft.com/en-us/windows/configuration/store/find-aumid).
-
-Para enviar teclas a una app cuyo proceso no aparezca, ábrela y pulsa **Ventana…**. Se guardará su proceso y el título de esa ventana para no enviar el atajo a otra por error. Si el título cambia, tendrás que volver a elegir la ventana. También puedes seguir escribiendo el proceso manualmente. Al elegir una app instalada, la acción de enviar teclas puede abrirla si estaba cerrada y esperará hasta ocho segundos a que aparezca su ventana.
+El catálogo procede de la carpeta de aplicaciones de Windows, por lo que [algunas apps pueden faltar](https://learn.microsoft.com/en-us/windows/configuration/store/find-aumid). Para abrir una app ya seleccionada, ShortcutTasker detecta su proceso automáticamente. La opción **Enviar combinación de teclas** permite seleccionar una ventana abierta con **Ventana…** si no se detecta el proceso. La antigua acción de volumen individual de Discord no aparece al crear atajos; los atajos existentes se conservan, aunque ya no se pueden editar desde esta versión.
 
 ## Actualizaciones
 

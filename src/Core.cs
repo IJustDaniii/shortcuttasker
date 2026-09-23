@@ -419,6 +419,10 @@ namespace AtajosLibres
             {
                 AppAutomation.SendShortcut("Discord", Modifiers.Ctrl | Modifiers.Shift, 0x44);
             }
+            else if (shortcut.Action == "spotify_playpause" || shortcut.Action == "spotify_next" || shortcut.Action == "spotify_previous")
+            {
+                AppAutomation.ControlSpotify(shortcut.Action, shortcut.AppLaunchTarget);
+            }
             else if (shortcut.Action == "discord_person")
             {
                 AppAutomation.ToggleDiscordParticipant(target);

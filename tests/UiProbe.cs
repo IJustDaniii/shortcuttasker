@@ -19,11 +19,30 @@ class UiProbe
             Application.DoEvents();
             editor.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
             image.Save("build\\editor.png", ImageFormat.Png);
-            var action = (ComboBox)typeof(ShortcutEditor).GetField("actionBox", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(editor);
-            action.SelectedIndex = 5;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ShortcutEditor);
+            ((TextBox)type.GetField("targetBox", flags).GetValue(editor)).Text = "Discord";
+            type.GetField("selectedAppName", flags).SetValue(editor, "Discord");
+            type.GetField("selectedAppLaunchTarget", flags).SetValue(editor, @"shell:AppsFolder\com.squirrel.Discord.Discord");
+            ((TextBox)type.GetField("processBox", flags).GetValue(editor)).Text = "Discord";
+            type.GetMethod("RefreshAppActions", flags).Invoke(editor, new object[] { "discord_mute" });
             Application.DoEvents();
-            editor.DrawToBitmap(image, new Rectangle(0, 0, image.Width, image.Height));
-            image.Save("build\\editor-app.png", ImageFormat.Png);
+            using (Bitmap discordImage = new Bitmap(editor.Width, editor.Height))
+            {
+                editor.DrawToBitmap(discordImage, new Rectangle(0, 0, discordImage.Width, discordImage.Height));
+                discordImage.Save("build\\editor-discord.png", ImageFormat.Png);
+            }
+            ((TextBox)type.GetField("targetBox", flags).GetValue(editor)).Text = "Spotify";
+            type.GetField("selectedAppName", flags).SetValue(editor, "Spotify");
+            type.GetField("selectedAppLaunchTarget", flags).SetValue(editor, @"shell:AppsFolder\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify");
+            ((TextBox)type.GetField("processBox", flags).GetValue(editor)).Text = "Spotify";
+            type.GetMethod("RefreshAppActions", flags).Invoke(editor, new object[] { "spotify_next" });
+            Application.DoEvents();
+            using (Bitmap spotifyImage = new Bitmap(editor.Width, editor.Height))
+            {
+                editor.DrawToBitmap(spotifyImage, new Rectangle(0, 0, spotifyImage.Width, spotifyImage.Height));
+                spotifyImage.Save("build\\editor-spotify.png", ImageFormat.Png);
+            }
         }
         using (AppPicker picker = new AppPicker(true, true))
         using (Bitmap image = new Bitmap(picker.Width, picker.Height))

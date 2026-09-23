@@ -1,5 +1,12 @@
 # Cambios
 
+## 1.1.1
+
+- Al elegir una aplicación instalada, muestra sus acciones directamente debajo: Discord ofrece silenciar/activar el micrófono y ensordecer/volver a oír; Spotify ofrece reproducir/pausar, siguiente canción y canción anterior.
+- Las demás aplicaciones permiten abrir o mostrar su ventana y enviar una combinación de teclas personalizada.
+- El campo «Nombre del proceso si ya está abierto» desaparece de la acción de abrir. ShortcutTasker usa el proceso detectado en el catálogo o la ruta del ejecutable.
+- Las acciones antiguas de volumen individual en Discord dejan de ofrecerse al crear atajos; las reglas existentes se conservan.
+
 ## 1.1.0
 
 - Selector con búsqueda de aplicaciones registradas en el menú Inicio de Windows.
