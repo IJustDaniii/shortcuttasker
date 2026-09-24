@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -169,23 +171,28 @@ namespace AtajosLibres
                     "Acción anterior", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            using (ShortcutEditor editor = new ShortcutEditor(existing))
+            hook.SetBindings(new List<Shortcut>());
+            try
             {
-                if (editor.ShowDialog(this) != DialogResult.OK) return;
-                Shortcut candidate = editor.Result;
-                foreach (Shortcut shortcut in config.Shortcuts)
+                using (ShortcutEditor editor = new ShortcutEditor(existing))
                 {
-                    if (shortcut != existing && shortcut.Enabled && candidate.Enabled &&
-                        shortcut.Key == candidate.Key && shortcut.Modifiers == candidate.Modifiers)
+                    if (editor.ShowDialog(this) != DialogResult.OK) return;
+                    Shortcut candidate = editor.Result;
+                    foreach (Shortcut shortcut in config.Shortcuts)
                     {
-                        MessageBox.Show(this, "Ese atajo ya está asignado a «" + shortcut.Name + "».", "Atajo duplicado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
+                        if (shortcut != existing && shortcut.Enabled && candidate.Enabled &&
+                            shortcut.Key == candidate.Key && shortcut.Modifiers == candidate.Modifiers)
+                        {
+                            MessageBox.Show(this, "Ese atajo ya está asignado a «" + shortcut.Name + "».", "Atajo duplicado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            return;
+                        }
                     }
+                    if (existing != null) config.Shortcuts[config.Shortcuts.IndexOf(existing)] = candidate;
+                    else config.Shortcuts.Add(candidate);
+                    SaveChanges();
                 }
-                if (existing != null) config.Shortcuts[config.Shortcuts.IndexOf(existing)] = candidate;
-                else config.Shortcuts.Add(candidate);
-                SaveChanges();
             }
+            finally { hook.SetBindings(paused ? new List<Shortcut>() : config.Shortcuts); }
         }
 
         private void ToggleSelected()
@@ -270,16 +277,10 @@ namespace AtajosLibres
         }
     }
 
-    internal sealed class KeyOption
-    {
-        public readonly string Label;
-        public readonly int Code;
-        public KeyOption(string label, int code) { Label = label; Code = code; }
-        public override string ToString() { return Label; }
-    }
-
     internal static class ShortcutNames
     {
+        [DllImport("user32.dll")] private static extern uint MapVirtualKey(uint code, uint mapType);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetKeyNameText(int lParam, StringBuilder text, int length);
         public static string Display(Shortcut shortcut)
         {
             List<string> parts = new List<string>();
@@ -293,6 +294,16 @@ namespace AtajosLibres
 
         public static string KeyName(int key)
         {
+            if (key == 0) return "Sin elegir";
+            if (key == InputCode.MouseLeft) return "Clic izquierdo";
+            if (key == InputCode.MouseRight) return "Clic derecho";
+            if (key == InputCode.MouseMiddle) return "Clic rueda";
+            if (key == InputCode.MouseX1) return "Botón lateral 1";
+            if (key == InputCode.MouseX2) return "Botón lateral 2";
+            if (key == InputCode.WheelUp) return "Rueda arriba";
+            if (key == InputCode.WheelDown) return "Rueda abajo";
+            if (key == InputCode.WheelLeft) return "Rueda izquierda";
+            if (key == InputCode.WheelRight) return "Rueda derecha";
             if (key >= 0x41 && key <= 0x5A) return ((char)key).ToString();
             if (key >= 0x30 && key <= 0x39) return ((char)key).ToString();
             if (key >= 0x70 && key <= 0x87) return "F" + (key - 0x6F);
@@ -303,7 +314,18 @@ namespace AtajosLibres
                 {0x2D,"Insert"},{0x2E,"Supr"},{0x24,"Inicio"},{0x23,"Fin"},
                 {0x21,"Re Pág"},{0x22,"Av Pág"}
             };
-            return names.ContainsKey(key) ? names[key] : "VK " + key;
+            if (names.ContainsKey(key)) return names[key];
+            if (key > 0 && key < 256)
+            {
+                uint scan = MapVirtualKey((uint)key, 0);
+                if (scan != 0)
+                {
+                    StringBuilder text = new StringBuilder(80);
+                    if (GetKeyNameText((int)(scan << 16), text, text.Capacity) > 0) return text.ToString();
+                }
+                return ((Keys)key).ToString();
+            }
+            return "Código " + key;
         }
 
         public static string ActionDisplay(string action)
@@ -326,17 +348,19 @@ namespace AtajosLibres
 
     public class ShortcutEditor : Form
     {
-        private TextBox nameBox, targetBox, processBox;
+        private TextBox nameBox, targetBox, processBox, keyCapture, appKeyCapture;
         private CheckBox win, ctrl, alt, shift;
         private CheckBox appWin, appCtrl, appAlt, appShift;
-        private ComboBox keyBox, actionBox, mediaBox, appActionBox, appKeyBox;
+        private ComboBox actionBox, mediaBox, appActionBox;
         private Label targetLabel, processLabel, appActionLabel, appKeyLabel, appModLabel, note;
-        private Button browse, installedButton, runningButton, saveButton, cancelButton;
+        private Button browse, installedButton, runningButton, saveButton, cancelButton, keyCaptureButton, appKeyCaptureButton;
         private Panel editorFooter;
         private FlowLayoutPanel appModsPanel;
         private string selectedAppLaunchTarget = "", selectedAppName = "", selectedWindowTitle = "";
         private bool changingAppSelection;
         private bool originalEnabled;
+        private int keyCode, appKeyCode;
+        private InputCaptureSession captureSession;
         public Shortcut Result { get; private set; }
 
         public ShortcutEditor(Shortcut existing)
@@ -354,6 +378,7 @@ namespace AtajosLibres
             AutoScaleMode = AutoScaleMode.Dpi;
             DoubleBuffered = true;
             BuildUi();
+            FormClosed += delegate { StopCapture(); };
             originalEnabled = existing == null || existing.Enabled;
             if (existing != null) Fill(existing);
         }
@@ -372,8 +397,8 @@ namespace AtajosLibres
             nameBox = new TextBox { Left = 24, Top = 44, Width = 480 };
             Controls.Add(nameBox);
 
-            LabelAt("Combinación de teclas", 86).Width = 275;
-            Label keyLabel = new Label { Text = "Tecla", Left = 312, Top = 86, Width = 192,
+            LabelAt("Modificadores (al menos uno)", 86).Width = 275;
+            Label keyLabel = new Label { Text = "Tecla o ratón", Left = 312, Top = 86, Width = 192,
                 Height = 21, Font = new Font("Segoe UI Semibold", 9F) };
             Controls.Add(keyLabel);
             FlowLayoutPanel mods = new FlowLayoutPanel { Left = 24, Top = 112, Width = 275, Height = 35 };
@@ -383,15 +408,11 @@ namespace AtajosLibres
             shift = new CheckBox { Text = "Mayús", Width = 71, Margin = new Padding(0, 0, 4, 0) };
             mods.Controls.AddRange(new Control[] { win, ctrl, alt, shift });
             Controls.Add(mods);
-            keyBox = new ComboBox { Left = 312, Top = 110, Width = 192, DropDownStyle = ComboBoxStyle.DropDownList };
-            for (int key = 0x41; key <= 0x5A; ++key) keyBox.Items.Add(new KeyOption(((char)key).ToString(), key));
-            for (int key = 0x30; key <= 0x39; ++key) keyBox.Items.Add(new KeyOption(((char)key).ToString(), key));
-            for (int key = 0x70; key <= 0x87; ++key) keyBox.Items.Add(new KeyOption("F" + (key - 0x6F), key));
-            for (int key = 0x60; key <= 0x69; ++key) keyBox.Items.Add(new KeyOption("Num " + (key - 0x60), key));
-            foreach (int key in new int[] { 0x20, 0x0D, 0x09, 0x1B, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E, 0x24, 0x23, 0x21, 0x22 })
-                keyBox.Items.Add(new KeyOption(ShortcutNames.KeyName(key), key));
-            keyBox.SelectedIndex = 2;
-            Controls.Add(keyBox);
+            keyCapture = new TextBox { Left = 312, Top = 110, Width = 112, ReadOnly = true, TabStop = false,
+                Text = "Sin elegir", AccessibleDescription = "Pulsa Capturar y luego una tecla o un botón del ratón" };
+            keyCaptureButton = Ui.Button("Capturar", 74); keyCaptureButton.Left = 430; keyCaptureButton.Top = 108;
+            keyCaptureButton.Click += delegate { BeginCapture(false); };
+            Controls.Add(keyCapture); Controls.Add(keyCaptureButton);
 
             LabelAt("Acción", 162);
             actionBox = new ComboBox { Left = 24, Top = 188, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
@@ -443,11 +464,13 @@ namespace AtajosLibres
             appWin = new CheckBox { Text = "Win", Width = 52 }; appCtrl = new CheckBox { Text = "Ctrl", Width = 54 };
             appAlt = new CheckBox { Text = "Alt", Width = 51 }; appShift = new CheckBox { Text = "Mayús", Width = 72 };
             appModsPanel.Controls.AddRange(new Control[] { appWin, appCtrl, appAlt, appShift }); Controls.Add(appModsPanel);
-            appKeyLabel = new Label { Text = "Tecla", Left = 312, Top = 444, Width = 192, Height = 21, Font = new Font("Segoe UI Semibold", 9F) };
+            appKeyLabel = new Label { Text = "Tecla propia", Left = 312, Top = 444, Width = 192, Height = 21, Font = new Font("Segoe UI Semibold", 9F) };
             Controls.Add(appKeyLabel);
-            appKeyBox = new ComboBox { Left = 312, Top = 468, Width = 192, DropDownStyle = ComboBoxStyle.DropDownList };
-            foreach (KeyOption option in keyBox.Items) appKeyBox.Items.Add(new KeyOption(option.Label, option.Code));
-            appKeyBox.SelectedIndex = 0; Controls.Add(appKeyBox);
+            appKeyCapture = new TextBox { Left = 312, Top = 468, Width = 112, ReadOnly = true, TabStop = false,
+                Text = "Sin elegir", AccessibleDescription = "Pulsa Capturar y luego una tecla de la aplicación" };
+            appKeyCaptureButton = Ui.Button("Capturar", 74); appKeyCaptureButton.Left = 430; appKeyCaptureButton.Top = 466;
+            appKeyCaptureButton.Click += delegate { BeginCapture(true); };
+            Controls.Add(appKeyCapture); Controls.Add(appKeyCaptureButton);
 
             editorFooter = new Panel { Dock = DockStyle.Bottom, Height = 120, BackColor = Color.White };
             note = new Label { Text = "El atajo se ejecuta al pulsar la última tecla.",
@@ -483,9 +506,8 @@ namespace AtajosLibres
             AppActionOption selected = appActionBox.SelectedItem as AppActionOption;
             bool sendKeys = hasApp && selected != null && selected.Action == "appkey";
             processLabel.Visible = processBox.Visible = runningButton.Visible = sendKeys;
-            appModLabel.Visible = appKeyLabel.Visible = appKeyBox.Visible = sendKeys;
+            appModLabel.Visible = appKeyLabel.Visible = appKeyCapture.Visible = appKeyCaptureButton.Visible = sendKeys;
             appModsPanel.Visible = sendKeys;
-            appWin.Visible = appCtrl.Visible = appAlt.Visible = appShift.Visible = sendKeys;
             note.Text = sendKeys
                 ? "Usa el atajo que ya tiene esa app (por ejemplo, Ctrl+M). Se mostrará su ventana para recibirlo. Se activa al pulsar la última tecla."
                 : action == 0 && !hasApp && string.IsNullOrWhiteSpace(targetBox.Text)
@@ -587,8 +609,8 @@ namespace AtajosLibres
             ctrl.Checked = (shortcut.Modifiers & Modifiers.Ctrl) != 0;
             alt.Checked = (shortcut.Modifiers & Modifiers.Alt) != 0;
             shift.Checked = (shortcut.Modifiers & Modifiers.Shift) != 0;
-            for (int i = 0; i < keyBox.Items.Count; ++i)
-                if (((KeyOption)keyBox.Items[i]).Code == shortcut.Key) { keyBox.SelectedIndex = i; break; }
+            keyCode = shortcut.Key;
+            keyCapture.Text = ShortcutNames.KeyName(keyCode);
             actionBox.SelectedIndex = shortcut.Action == "web" ? 1 : shortcut.Action == "text" ? 2 :
                 shortcut.Action == "command" ? 3 : shortcut.Action == "media" ? 4 : 0;
             if (shortcut.Action == "media") mediaBox.SelectedItem = shortcut.Target;
@@ -609,9 +631,71 @@ namespace AtajosLibres
             appCtrl.Checked = (shortcut.AppModifiers & Modifiers.Ctrl) != 0;
             appAlt.Checked = (shortcut.AppModifiers & Modifiers.Alt) != 0;
             appShift.Checked = (shortcut.AppModifiers & Modifiers.Shift) != 0;
-            for (int i = 0; i < appKeyBox.Items.Count; ++i)
-                if (((KeyOption)appKeyBox.Items[i]).Code == shortcut.AppKey) { appKeyBox.SelectedIndex = i; break; }
+            appKeyCode = shortcut.AppKey;
+            appKeyCapture.Text = ShortcutNames.KeyName(appKeyCode);
             RefreshAppActions(shortcut.Action);
+        }
+
+        private void BeginCapture(bool appKey)
+        {
+            Button button = appKey ? appKeyCaptureButton : keyCaptureButton;
+            if (captureSession != null)
+            {
+                bool cancelling = button.Text == "Cancelar";
+                StopCapture();
+                if (cancelling) return;
+            }
+            InputCaptureSession session = new InputCaptureSession(!appKey, delegate(Point point)
+            {
+                return button.RectangleToScreen(button.ClientRectangle).Contains(point);
+            });
+            session.Captured += delegate(int code, Modifiers capturedModifiers)
+            {
+                if (appKey)
+                {
+                    appKeyCode = code;
+                    appKeyCapture.Text = ShortcutNames.KeyName(code);
+                    if (capturedModifiers != Modifiers.None) ApplyModifiers(capturedModifiers, appWin, appCtrl, appAlt, appShift);
+                }
+                else
+                {
+                    keyCode = code;
+                    keyCapture.Text = ShortcutNames.KeyName(code);
+                    if (capturedModifiers != Modifiers.None) ApplyModifiers(capturedModifiers, win, ctrl, alt, shift);
+                }
+            };
+            session.Finished += StopCapture;
+            try
+            {
+                session.Start();
+                captureSession = session;
+                button.Text = "Cancelar";
+                (appKey ? appKeyCapture : keyCapture).Text = "Pulsa ahora...";
+            }
+            catch (Exception ex)
+            {
+                session.Dispose();
+                Warn("No se pudo iniciar la captura: " + ex.Message);
+            }
+        }
+
+        private static void ApplyModifiers(Modifiers value, CheckBox win, CheckBox ctrl, CheckBox alt, CheckBox shift)
+        {
+            win.Checked = (value & Modifiers.Win) != 0;
+            ctrl.Checked = (value & Modifiers.Ctrl) != 0;
+            alt.Checked = (value & Modifiers.Alt) != 0;
+            shift.Checked = (value & Modifiers.Shift) != 0;
+        }
+
+        private void StopCapture()
+        {
+            InputCaptureSession session = captureSession;
+            captureSession = null;
+            if (session != null) session.Dispose();
+            if (keyCaptureButton != null) keyCaptureButton.Text = "Capturar";
+            if (appKeyCaptureButton != null) appKeyCaptureButton.Text = "Capturar";
+            if (keyCapture != null) keyCapture.Text = ShortcutNames.KeyName(keyCode);
+            if (appKeyCapture != null) appKeyCapture.Text = ShortcutNames.KeyName(appKeyCode);
         }
 
         private void Save(object sender, EventArgs e)
@@ -622,7 +706,8 @@ namespace AtajosLibres
             if (alt.Checked) mods |= Modifiers.Alt;
             if (shift.Checked) mods |= Modifiers.Shift;
             if (mods == Modifiers.None) { Warn("Elige al menos una tecla modificadora."); return; }
-            int key = ((KeyOption)keyBox.SelectedItem).Code;
+            int key = keyCode;
+            if (key == 0) { Warn("Pulsa «Capturar» y después la tecla o el botón del ratón que activará el atajo."); return; }
             if ((mods & Modifiers.Win) != 0 && key == 0x4C) { Warn("Win+L está reservado por Windows."); return; }
             if ((mods & (Modifiers.Ctrl | Modifiers.Alt)) == (Modifiers.Ctrl | Modifiers.Alt) && key == 0x2E)
             { Warn("Ctrl+Alt+Supr está reservado por Windows."); return; }
@@ -650,6 +735,8 @@ namespace AtajosLibres
             catch (ArgumentException ex) { Warn(ex.Message); return; }
             if (appAction == "appkey" && process.Length == 0)
             { Warn("No se detectó el proceso. Abre la aplicación y elige su ventana."); return; }
+            if (appAction == "appkey" && appKeyCode == 0)
+            { Warn("Pulsa «Capturar» en «Tecla propia» y después la tecla que recibe la aplicación."); return; }
             Modifiers appMods = Modifiers.None;
             if (appWin.Checked) appMods |= Modifiers.Win;
             if (appCtrl.Checked) appMods |= Modifiers.Ctrl;
@@ -661,7 +748,7 @@ namespace AtajosLibres
                 AppLaunchTarget = actionBox.SelectedIndex == 0 ? selectedAppLaunchTarget : "",
                 AppDisplayName = actionBox.SelectedIndex == 0 ? selectedAppName : "",
                 AppWindowTitle = actionBox.SelectedIndex == 0 ? selectedWindowTitle : "",
-                AppModifiers = appMods, AppKey = ((KeyOption)appKeyBox.SelectedItem).Code, Enabled = originalEnabled };
+                AppModifiers = appMods, AppKey = appKeyCode, Enabled = originalEnabled };
             DialogResult = DialogResult.OK;
             Close();
         }

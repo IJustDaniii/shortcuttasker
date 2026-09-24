@@ -1,5 +1,5 @@
 #define AppName "ShortcutTasker"
-#define AppVersion "1.1.4"
+#define AppVersion "1.1.5"
 #define SourceExe "..\build\ShortcutTasker.exe"
 
 [Setup]
@@ -26,7 +26,7 @@ CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\AtajosLibres.Instancia.v1
 ArchitecturesAllowed=x86 x64compatible
-VersionInfoVersion=1.1.4.0
+VersionInfoVersion=1.1.5.0
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"

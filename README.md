@@ -8,6 +8,12 @@ Descarga `ShortcutTasker-Setup.exe` desde [Releases](https://github.com/IJustDan
 
 **Requisitos:** Windows 10 versión 1809 o posterior, o Windows 11, y .NET Framework 4.8. El ejecutable y el instalador de esta versión no tienen firma de código. En equipos con Control inteligente de aplicaciones o una política que exija firma, Windows puede bloquearlos; publicar el archivo en GitHub no elimina ese bloqueo. No desactives la protección del sistema solo para instalarlos.
 
+## Elegir un atajo
+
+En **Nuevo atajo**, pulsa **Capturar** y después la tecla o el control del ratón que quieras usar. Puedes mantener pulsados Win, Ctrl, Alt o Mayús durante la captura para marcar los modificadores automáticamente, o marcarlos en el formulario. Se requiere al menos uno para conservar el uso normal de teclas y clics sin modificador. El botón **Cancelar** de la captura permite volver a elegir.
+
+Se admiten las teclas que Windows entrega como códigos virtuales, clic izquierdo, derecho y central, los dos botones laterales estándar y la rueda vertical u horizontal en ambas direcciones. La tecla Fn de algunos teclados se procesa en el hardware y puede no generar un código de Windows. Los controles del ratón se ejecutan al pulsar o mover la rueda; se evita que el clic o desplazamiento asociado llegue a la ventana activa cuando coincide con un atajo.
+
 ## Acciones de aplicaciones
 
 En **Nuevo atajo**, elige **Aplicación, archivo o carpeta** y pulsa **Instaladas…**. Debajo de la aplicación elegida aparece **Qué hacer con esta aplicación**:
@@ -28,6 +34,6 @@ Al iniciarse, ShortcutTasker consulta la última versión publicada en GitHub. S
 
 Se necesita el compilador de .NET Framework de Windows e [Inno Setup 6](https://jrsoftware.org/isinfo.php). La compilación descarga de NuGet una versión fijada de `Microsoft.Windows.SDK.Contracts` y verifica su SHA-256 para usar la API multimedia de Windows; esta dependencia de compilación no se incluye en el instalador. Ejecuta `powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1` desde la carpeta del proyecto. El programa queda en `build\ShortcutTasker.exe` y el instalador en `dist\ShortcutTasker-Setup.exe`.
 
-Para ejecutar las pruebas de lógica y activación de ventanas: `powershell -NoProfile -ExecutionPolicy Bypass -File .\test.ps1`.
+Para ejecutar las pruebas de lógica, ratón y activación de ventanas: `powershell -NoProfile -ExecutionPolicy Bypass -File .\test.ps1`.
 
 El proyecto no almacena contraseñas ni tokens de GitHub. La comprobación de actualizaciones usa la API pública de Releases.

@@ -19,6 +19,7 @@ class CoreTests
             BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
             Type type = typeof(ShortcutEditor);
             ((TextBox)type.GetField("nameBox", flags).GetValue(editor)).Text = "Control de prueba";
+            type.GetField("keyCode", flags).SetValue(editor, 0x43);
             ((CheckBox)type.GetField("win", flags).GetValue(editor)).Checked = true;
             ((TextBox)type.GetField("targetBox", flags).GetValue(editor)).Text = appName;
             ((TextBox)type.GetField("processBox", flags).GetValue(editor)).Text = process;
@@ -70,6 +71,33 @@ class CoreTests
         matcher.Process(0xA2, false);
         Check(matcher.Process(0xA4, false).Run.Count == 0, "Left modifiers release does not rerun");
 
+        int mouseCode; bool mouseDown, mousePulse;
+        Check(InputCode.TryDecodeMouse(Native.WM_XBUTTONDOWN, 2u << 16, out mouseCode, out mouseDown, out mousePulse) &&
+            mouseCode == InputCode.MouseX2 && mouseDown && !mousePulse, "Second side button decoded");
+        Check(InputCode.TryDecodeMouse(Native.WM_MOUSEWHEEL, 120u << 16, out mouseCode, out mouseDown, out mousePulse) &&
+            mouseCode == InputCode.WheelUp && mousePulse, "Vertical wheel up decoded");
+        Check(InputCode.TryDecodeMouse(Native.WM_MOUSEHWHEEL, unchecked((uint)(-120 << 16)), out mouseCode, out mouseDown, out mousePulse) &&
+            mouseCode == InputCode.WheelLeft && mousePulse, "Horizontal wheel left decoded");
+        Check(ShortcutNames.KeyName(InputCode.MouseX2) == "Botón lateral 2" &&
+            ShortcutNames.KeyName(InputCode.WheelUp) == "Rueda arriba", "Mouse inputs display in shortcut list");
+        WheelAccumulator smoothWheel = new WheelAccumulator();
+        Check(smoothWheel.Add(InputCode.WheelUp, 40) == 0 && smoothWheel.Add(InputCode.WheelUp, 40) == 0 &&
+            smoothWheel.Add(InputCode.WheelUp, 40) == 1, "Three small wheel deltas make one shortcut");
+        Check(smoothWheel.Add(InputCode.WheelDown, -60) == 0 && smoothWheel.Add(InputCode.WheelUp, 120) == 1,
+            "Changing wheel direction discards the previous partial step");
+        matcher.SetBindings(new List<Shortcut> { new Shortcut { Name = "Rueda", Modifiers = Modifiers.Ctrl, Key = InputCode.WheelUp, Enabled = true } });
+        matcher.Process(0x11, true);
+        MatchResult wheel = matcher.Process(InputCode.WheelUp, true);
+        Check(wheel.Suppress && wheel.Run.Count == 1, "Ctrl+wheel runs on wheel event");
+        matcher.Process(InputCode.WheelUp, false);
+        Check(matcher.Process(InputCode.WheelUp, true).Run.Count == 1, "Next wheel notch runs again");
+        matcher.Process(InputCode.WheelUp, false);
+        matcher.Process(0x11, false);
+        matcher.SetBindings(new List<Shortcut> { new Shortcut { Name = "Rueda Win", Modifiers = Modifiers.Win, Key = InputCode.WheelUp, Enabled = true } });
+        matcher.Process(0x5B, true);
+        Check(matcher.HasBinding(InputCode.WheelUp) && matcher.MarkHandledInput(), "Partial Win+wheel is handled and masks Start");
+        Check(matcher.Process(0x5B, false).MaskMenu, "Win release stays masked after a partial wheel movement");
+
         Check(AppAutomation.NormalizeProcessName("Discord.exe") == "Discord", "Normalize process name");
         Check(AppAutomation.NormalizeProcessName("  spotify  ") == "spotify", "Trim process name");
         try
@@ -110,6 +138,6 @@ class CoreTests
         InstalledApp knownPackage = detected.Find(delegate(InstalledApp app) { return app.LaunchTarget.StartsWith(@"shell:AppsFolder\OpenAI.Codex_"); });
         if (knownPackage != null) Check(InstalledApps.ResolvePackagedProcess(knownPackage.LaunchTarget) == "ChatGPT", "Packaged app process");
 
-        Console.WriteLine("18 behavioral checks passed");
+        Console.WriteLine("Behavioral checks passed");
     }
 }

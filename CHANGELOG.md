@@ -1,5 +1,14 @@
 # Cambios
 
+## 1.1.5
+
+- Sustituye las listas de teclas por «Capturar»: pulsa la tecla o el control de ratón deseado para registrarlo.
+- Admite cualquier tecla que Windows entregue como código virtual, incluidos caracteres de otros teclados y teclas multimedia.
+- Permite usar clic izquierdo, derecho, central, los dos botones laterales estándar y la rueda vertical u horizontal como parte de un atajo.
+- Agrupa los impulsos pequeños de las ruedas de alta resolución para ejecutar una sola acción por paso.
+- Los modificadores se pueden marcar o pulsar durante la captura. Se requiere al menos uno para no bloquear los clics o teclas habituales del equipo.
+- La opción de enviar el atajo propio de otra aplicación también captura su tecla desde el teclado.
+
 ## 1.1.4
 
 - Todos los atajos se ejecutan al pulsar la última tecla; ya no esperan a soltar los modificadores.

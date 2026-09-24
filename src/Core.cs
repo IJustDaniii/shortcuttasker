@@ -95,6 +95,22 @@ namespace AtajosLibres
             Interlocked.Exchange(ref bindings, copy);
         }
 
+        public bool HasBinding(int key)
+        {
+            Modifiers current = CurrentModifiers();
+            if (current == Modifiers.None) return false;
+            foreach (Shortcut shortcut in bindings)
+                if (shortcut.Enabled && shortcut.Key == key && shortcut.Modifiers == current) return true;
+            return false;
+        }
+
+        public bool MarkHandledInput()
+        {
+            bool mask = (CurrentModifiers() & (Modifiers.Win | Modifiers.Alt)) != 0;
+            maskOnModifierRelease |= mask;
+            return mask;
+        }
+
         public MatchResult Process(int key, bool isDown)
         {
             MatchResult result = new MatchResult();
@@ -180,9 +196,14 @@ namespace AtajosLibres
 
     internal static class Native
     {
-        internal const int WH_KEYBOARD_LL = 13;
+        internal const int WH_KEYBOARD_LL = 13, WH_MOUSE_LL = 14;
         internal const int WM_KEYDOWN = 0x100, WM_KEYUP = 0x101, WM_SYSKEYDOWN = 0x104, WM_SYSKEYUP = 0x105;
+        internal const int WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_LBUTTONDBLCLK = 0x203;
+        internal const int WM_RBUTTONDOWN = 0x204, WM_RBUTTONUP = 0x205, WM_RBUTTONDBLCLK = 0x206;
+        internal const int WM_MBUTTONDOWN = 0x207, WM_MBUTTONUP = 0x208, WM_MBUTTONDBLCLK = 0x209;
+        internal const int WM_MOUSEWHEEL = 0x20A, WM_XBUTTONDOWN = 0x20B, WM_XBUTTONUP = 0x20C, WM_XBUTTONDBLCLK = 0x20D, WM_MOUSEHWHEEL = 0x20E;
         internal const int LLKHF_INJECTED = 0x10;
+        internal const int LLMHF_INJECTED = 1;
         internal const int INPUT_KEYBOARD = 1, KEYEVENTF_KEYUP = 2, KEYEVENTF_UNICODE = 4;
         internal const uint OwnInputMarker = 0xC0DEC0DE;
 
@@ -190,6 +211,17 @@ namespace AtajosLibres
         internal struct KBDLLHOOKSTRUCT
         {
             public uint vkCode, scanCode, flags, time;
+            public UIntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct POINT { public int x, y; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData, flags, time;
             public UIntPtr dwExtraInfo;
         }
 
@@ -238,15 +270,17 @@ namespace AtajosLibres
     public class KeyboardHook : IDisposable
     {
         private readonly ShortcutMatcher matcher = new ShortcutMatcher();
+        private readonly WheelAccumulator wheelAccumulator = new WheelAccumulator();
         private readonly Native.HookProc callback;
-        private IntPtr hook;
+        private readonly Native.HookProc mouseCallback;
+        private IntPtr hook, mouseHook;
         private Thread thread;
         private uint threadId;
         private readonly ManualResetEventSlim ready = new ManualResetEventSlim(false);
         private Exception startError;
         public event Action<Shortcut> Triggered;
 
-        public KeyboardHook() { callback = Handle; }
+        public KeyboardHook() { callback = Handle; mouseCallback = HandleMouse; }
         public void SetBindings(IList<Shortcut> shortcuts) { matcher.SetBindings(shortcuts); }
 
         public void Start()
@@ -269,9 +303,17 @@ namespace AtajosLibres
                 ready.Set();
                 return;
             }
+            mouseHook = Native.SetWindowsHookEx(Native.WH_MOUSE_LL, mouseCallback, Native.GetModuleHandle(null), 0);
+            if (mouseHook == IntPtr.Zero)
+            {
+                startError = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                Native.UnhookWindowsHookEx(hook); hook = IntPtr.Zero;
+                ready.Set();
+                return;
+            }
             ready.Set();
             try { System.Windows.Forms.Application.Run(); }
-            finally { Native.UnhookWindowsHookEx(hook); hook = IntPtr.Zero; }
+            finally { Native.UnhookWindowsHookEx(mouseHook); mouseHook = IntPtr.Zero; Native.UnhookWindowsHookEx(hook); hook = IntPtr.Zero; }
         }
 
         private IntPtr Handle(int code, IntPtr wParam, IntPtr lParam)
@@ -291,6 +333,7 @@ namespace AtajosLibres
                         if (down && !ShortcutMatcher.IsModifier((int)key.vkCode))
                             matcher.ReconcileModifiers(delegate(int vk) { return (Native.GetAsyncKeyState(vk) & 0x8000) != 0; });
                         MatchResult result = matcher.Process((int)key.vkCode, down);
+                        if (ShortcutMatcher.IsModifier((int)key.vkCode)) wheelAccumulator.ResetAll();
                         bool replacedRelease = false;
                         if (result.MaskMenu)
                         {
@@ -311,6 +354,56 @@ namespace AtajosLibres
             }
             catch { /* A keyboard hook must never crash the desktop input chain. */ }
             return Native.CallNextHookEx(hook, code, wParam, lParam);
+        }
+
+        private IntPtr HandleMouse(int code, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (code >= 0)
+                {
+                    Native.MSLLHOOKSTRUCT mouse = (Native.MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
+                    if ((mouse.flags & Native.LLMHF_INJECTED) != 0 && mouse.dwExtraInfo.ToUInt64() == Native.OwnInputMarker)
+                        return Native.CallNextHookEx(mouseHook, code, wParam, lParam);
+                    int input; bool down, pulse;
+                    if (InputCode.TryDecodeMouse(wParam.ToInt32(), mouse.mouseData, out input, out down, out pulse))
+                    {
+                        if (down) matcher.ReconcileModifiers(delegate(int vk) { return (Native.GetAsyncKeyState(vk) & 0x8000) != 0; });
+                        if (pulse)
+                        {
+                            if (!matcher.HasBinding(input))
+                            {
+                                wheelAccumulator.Reset(input);
+                                return Native.CallNextHookEx(mouseHook, code, wParam, lParam);
+                            }
+                            int delta = unchecked((short)(mouse.mouseData >> 16));
+                            int steps = wheelAccumulator.Add(input, delta);
+                            if (matcher.MarkHandledInput()) MaskMenu();
+                            for (int i = 0; i < steps; ++i)
+                            {
+                                MatchResult notch = matcher.Process(input, true);
+                                matcher.Process(input, false);
+                                foreach (Shortcut shortcut in notch.Run)
+                                {
+                                    Action<Shortcut> handler = Triggered;
+                                    if (handler != null) ThreadPool.QueueUserWorkItem(delegate { handler(shortcut); });
+                                }
+                            }
+                            return new IntPtr(1);
+                        }
+                        MatchResult result = matcher.Process(input, down);
+                        if (result.MaskMenu) MaskMenu();
+                        foreach (Shortcut shortcut in result.Run)
+                        {
+                            Action<Shortcut> handler = Triggered;
+                            if (handler != null) ThreadPool.QueueUserWorkItem(delegate { handler(shortcut); });
+                        }
+                        if (result.Suppress) return new IntPtr(1);
+                    }
+                }
+            }
+            catch { /* A mouse hook must never crash the desktop input chain. */ }
+            return Native.CallNextHookEx(mouseHook, code, wParam, lParam);
         }
 
         private static void MaskMenu()

@@ -43,6 +43,17 @@ class UiProbe
                 editor.DrawToBitmap(spotifyImage, new Rectangle(0, 0, spotifyImage.Width, spotifyImage.Height));
                 spotifyImage.Save("build\\editor-spotify.png", ImageFormat.Png);
             }
+            ((TextBox)type.GetField("targetBox", flags).GetValue(editor)).Text = "Editor";
+            type.GetField("selectedAppName", flags).SetValue(editor, "Editor");
+            type.GetField("selectedAppLaunchTarget", flags).SetValue(editor, @"C:\\Apps\\Editor.exe");
+            ((TextBox)type.GetField("processBox", flags).GetValue(editor)).Text = "Editor";
+            type.GetMethod("RefreshAppActions", flags).Invoke(editor, new object[] { "appkey" });
+            Application.DoEvents();
+            using (Bitmap appImage = new Bitmap(editor.Width, editor.Height))
+            {
+                editor.DrawToBitmap(appImage, new Rectangle(0, 0, appImage.Width, appImage.Height));
+                appImage.Save("build\\editor-appkey.png", ImageFormat.Png);
+            }
         }
         using (AppPicker picker = new AppPicker(true, true))
         using (Bitmap image = new Bitmap(picker.Width, picker.Height))

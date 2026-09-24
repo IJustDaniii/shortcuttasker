@@ -27,3 +27,11 @@ if ($LASTEXITCODE -ne 0) { throw 'No se compiló la ventana de prueba.' }
 if ($LASTEXITCODE -ne 0) { throw 'No se compilaron las pruebas de ventanas.' }
 & .\build\FocusTests.exe
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de ventanas.' }
+& $compiler /nologo /target:exe /codepage:65001 /main:MouseHookTests /out:build\MouseHookTests.exe $refs $sources tests\MouseHookTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'No se compilaron las pruebas del ratón.' }
+& .\build\MouseHookTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas del ratón.' }
+& $compiler /nologo /target:exe /codepage:65001 /main:CaptureTests /out:build\CaptureTests.exe $refs $sources tests\CaptureTests.cs
+if ($LASTEXITCODE -ne 0) { throw 'No se compilaron las pruebas de captura.' }
+& .\build\CaptureTests.exe
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de captura.' }
