@@ -85,7 +85,6 @@ namespace AtajosLibres
     {
         private readonly HashSet<int> downModifiers = new HashSet<int>();
         private readonly HashSet<int> consumedKeys = new HashSet<int>();
-        private readonly List<Shortcut> pending = new List<Shortcut>();
         private Shortcut[] bindings = new Shortcut[0];
         private bool maskOnModifierRelease;
 
@@ -114,8 +113,6 @@ namespace AtajosLibres
                     if (key == 0x10) { downModifiers.Remove(0xA0); downModifiers.Remove(0xA1); }
                     if (downModifiers.Count == 0)
                     {
-                        result.Run.AddRange(pending);
-                        pending.Clear();
                         maskOnModifierRelease = false;
                     }
                 }
@@ -141,8 +138,7 @@ namespace AtajosLibres
                 if (shortcut.Enabled && shortcut.Key == key && shortcut.Modifiers == current)
                 {
                     consumedKeys.Add(key);
-                    if (RunOnKeyDown(shortcut.Action)) result.Run.Add(shortcut);
-                    else pending.Add(shortcut);
+                    result.Run.Add(shortcut);
                     result.Suppress = true;
                     result.MaskMenu = (current & (Modifiers.Win | Modifiers.Alt)) != 0;
                     maskOnModifierRelease |= result.MaskMenu;
@@ -150,12 +146,6 @@ namespace AtajosLibres
                 }
             }
             return result;
-        }
-
-        private static bool RunOnKeyDown(string action)
-        {
-            return action == "discord_mute" || action == "discord_deafen" ||
-                action == "spotify_playpause" || action == "spotify_next" || action == "spotify_previous";
         }
 
         public void ReconcileModifiers(Func<int, bool> isPressed)
@@ -348,6 +338,27 @@ namespace AtajosLibres
             return input;
         }
 
+        internal static void SendWithNeutralModifiers(IList<Native.INPUT> action)
+        {
+            ushort[] modifierKeys = { 0x5B, 0x5C, 0xA2, 0xA3, 0xA4, 0xA5, 0xA0, 0xA1 };
+            List<ushort> held = new List<ushort>();
+            foreach (ushort key in modifierKeys)
+                if ((Native.GetAsyncKeyState(key) & 0x8000) != 0) held.Add(key);
+
+            List<Native.INPUT> batch = new List<Native.INPUT>(action.Count + held.Count * 2 + 2);
+            if (held.Contains(0x5B) || held.Contains(0x5C) || held.Contains(0xA4) || held.Contains(0xA5))
+            {
+                batch.Add(MakeKey(0xE8, false));
+                batch.Add(MakeKey(0xE8, true));
+            }
+            for (int i = held.Count - 1; i >= 0; --i) batch.Add(MakeKey(held[i], true));
+            batch.AddRange(action);
+            foreach (ushort key in held) batch.Add(MakeKey(key, false));
+            Native.INPUT[] inputs = batch.ToArray();
+            if (Native.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Native.INPUT))) != inputs.Length)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+
         public void Dispose()
         {
             if (threadId != 0) Native.PostThreadMessage(threadId, 0x12, IntPtr.Zero, IntPtr.Zero);
@@ -377,17 +388,18 @@ namespace AtajosLibres
             }
             else if (shortcut.Action == "text")
             {
+                List<Native.INPUT> inputs = new List<Native.INPUT>();
                 foreach (char c in target)
                 {
-                    Native.INPUT[] inputs = new Native.INPUT[2];
-                    inputs[0].type = inputs[1].type = Native.INPUT_KEYBOARD;
-                    inputs[0].data.ki.wScan = inputs[1].data.ki.wScan = c;
-                    inputs[0].data.ki.dwFlags = Native.KEYEVENTF_UNICODE;
-                    inputs[1].data.ki.dwFlags = Native.KEYEVENTF_UNICODE | Native.KEYEVENTF_KEYUP;
-                    inputs[0].data.ki.dwExtraInfo = inputs[1].data.ki.dwExtraInfo = new UIntPtr(Native.OwnInputMarker);
-                    if (Native.SendInput(2, inputs, Marshal.SizeOf(typeof(Native.INPUT))) != 2)
-                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                    Native.INPUT down = new Native.INPUT(), up = new Native.INPUT();
+                    down.type = up.type = Native.INPUT_KEYBOARD;
+                    down.data.ki.wScan = up.data.ki.wScan = c;
+                    down.data.ki.dwFlags = Native.KEYEVENTF_UNICODE;
+                    up.data.ki.dwFlags = Native.KEYEVENTF_UNICODE | Native.KEYEVENTF_KEYUP;
+                    down.data.ki.dwExtraInfo = up.data.ki.dwExtraInfo = new UIntPtr(Native.OwnInputMarker);
+                    inputs.Add(down); inputs.Add(up);
                 }
+                if (inputs.Count > 0) KeyboardHook.SendWithNeutralModifiers(inputs);
             }
             else if (shortcut.Action == "media")
             {

@@ -38,7 +38,7 @@ namespace AtajosLibres
                 options.Add(new AppActionOption("spotify_next", "Siguiente canción"));
                 options.Add(new AppActionOption("spotify_previous", "Canción anterior"));
             }
-            else options.Add(new AppActionOption("appkey", "Enviar combinación de teclas"));
+            else options.Add(new AppActionOption("appkey", "Usar un atajo propio de la aplicación"));
             return options;
         }
 

@@ -1,5 +1,13 @@
 # Cambios
 
+## 1.1.4
+
+- Todos los atajos se ejecutan al pulsar la última tecla; ya no esperan a soltar los modificadores.
+- Spotify usa la sesión multimedia de Windows para reproducir, pausar y cambiar de canción sin localizar botones ni mostrar la ventana.
+- Discord usa la acción de alternar que exponen sus botones de micrófono y ensordecimiento, y puede encontrarlos con la ventana oculta si siguen disponibles para la accesibilidad de Windows.
+- El formulario evita que un panel invisible tape parte de «Guardar atajo» y mantiene los botones en una zona fija al cambiar de acción.
+- La opción «Usar un atajo propio de la aplicación» explica que envía las teclas de un atajo ya configurado en esa app y que necesita mostrar su ventana.
+
 ## 1.1.3
 
 - Aclara el formulario vacío: primero hay que seleccionar una app instalada para ver sus acciones.

@@ -46,26 +46,29 @@ class CoreTests
 
         matcher.Process(0x5B, true);
         MatchResult trigger = matcher.Process(0x43, true);
-        Check(trigger.Suppress && trigger.MaskMenu, "Win+C must suppress and mask");
-        Check(matcher.Process(0x43, true).Suppress, "Repeat C must be suppressed");
+        Check(trigger.Suppress && trigger.MaskMenu && trigger.Run.Count == 1 && trigger.Run[0].Name == "ChatGPT", "Win+C must run on key down");
+        MatchResult repeat = matcher.Process(0x43, true);
+        Check(repeat.Suppress && repeat.Run.Count == 0, "Repeat C must be suppressed without retriggering");
         Check(matcher.Process(0x43, false).Suppress, "C up must be suppressed");
         MatchResult release = matcher.Process(0x5B, false);
-        Check(release.MaskMenu && release.Run.Count == 1 && release.Run[0].Name == "ChatGPT", "Launch once after Win release");
+        Check(release.MaskMenu && release.Run.Count == 0, "Win release masks Start without rerunning");
 
         matcher.Process(0x11, true);
         matcher.Process(0x12, true);
-        Check(matcher.Process(0x54, true).Suppress, "Ctrl+Alt+T must match");
+        MatchResult textTrigger = matcher.Process(0x54, true);
+        Check(textTrigger.Suppress && textTrigger.Run.Count == 1, "Ctrl+Alt+T must run on key down");
         matcher.Process(0x54, false);
-        Check(matcher.Process(0x11, false).Run.Count == 0, "Wait for every modifier");
-        Check(matcher.Process(0x12, false).Run.Count == 1, "Run after final modifier");
+        Check(matcher.Process(0x11, false).Run.Count == 0, "No rerun on first modifier release");
+        Check(matcher.Process(0x12, false).Run.Count == 0, "No rerun on last modifier release");
 
         matcher.Process(0xA2, true);
         matcher.Process(0xA4, true);
         matcher.ReconcileModifiers(delegate(int key) { return key == 0xA2 || key == 0xA4; });
-        Check(matcher.Process(0x54, true).Suppress, "Left Ctrl+Alt must match");
+        MatchResult leftTrigger = matcher.Process(0x54, true);
+        Check(leftTrigger.Suppress && leftTrigger.Run.Count == 1, "Left Ctrl+Alt must match and run immediately");
         matcher.Process(0x54, false);
         matcher.Process(0xA2, false);
-        Check(matcher.Process(0xA4, false).Run.Count == 1, "Left modifiers release action");
+        Check(matcher.Process(0xA4, false).Run.Count == 0, "Left modifiers release does not rerun");
 
         Check(AppAutomation.NormalizeProcessName("Discord.exe") == "Discord", "Normalize process name");
         Check(AppAutomation.NormalizeProcessName("  spotify  ") == "spotify", "Trim process name");

@@ -94,92 +94,42 @@ namespace AtajosLibres
             if ((modifiers & Modifiers.Alt) != 0) inputs.Add(KeyboardHook.MakeKey(0x12, true));
             if ((modifiers & Modifiers.Ctrl) != 0) inputs.Add(KeyboardHook.MakeKey(0x11, true));
             if ((modifiers & Modifiers.Win) != 0) inputs.Add(KeyboardHook.MakeKey(0x5B, true));
-            Native.INPUT[] batch = inputs.ToArray();
-            if (Native.SendInput((uint)batch.Length, batch, Marshal.SizeOf(typeof(Native.INPUT))) != batch.Length)
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+            KeyboardHook.SendWithNeutralModifiers(inputs);
         }
 
         public static void ControlSpotify(string action)
         {
-            if (action != "spotify_playpause" && action != "spotify_next" && action != "spotify_previous")
-                throw new ArgumentException("Control de Spotify desconocido.");
-            IntPtr window = FindWindow("Spotify", null, null);
-            if (window == IntPtr.Zero) throw new InvalidOperationException("Spotify no tiene una ventana disponible. ShortcutTasker no abrirá la aplicación para ejecutar esta acción.");
-            if (!TryInvokeSpotifyPlayer(window, action))
-                throw new InvalidOperationException("No se encontraron los controles accesibles del reproductor de Spotify.");
-        }
-
-        private static bool TryInvokeSpotifyPlayer(IntPtr window, string action)
-        {
-            try
-            {
-                AutomationElement root = AutomationElement.FromHandle(window);
-                AutomationElementCollection buttons = root.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
-                List<AutomationElement> previous = new List<AutomationElement>();
-                List<AutomationElement> next = new List<AutomationElement>();
-                List<AutomationElement> play = new List<AutomationElement>();
-                foreach (AutomationElement button in buttons)
-                {
-                    if (!button.Current.IsEnabled || button.Current.BoundingRectangle.IsEmpty) continue;
-                    string name = button.Current.Name;
-                    if (name == "Anterior" || name == "Previous" || name == "Previous track") previous.Add(button);
-                    else if (name == "Siguiente" || name == "Next" || name == "Next track") next.Add(button);
-                    else if (name == "Reproducir" || name == "Pausar" || name == "Play" || name == "Pause") play.Add(button);
-                }
-                foreach (AutomationElement prev in previous)
-                    foreach (AutomationElement nxt in next)
-                    {
-                        System.Windows.Rect left = prev.Current.BoundingRectangle;
-                        System.Windows.Rect right = nxt.Current.BoundingRectangle;
-                        if (right.Left <= left.Right || right.Left - left.Right > 160 || Math.Abs(right.Top - left.Top) > 20) continue;
-                        AutomationElement chosen = null;
-                        if (action == "spotify_previous") chosen = prev;
-                        else if (action == "spotify_next") chosen = nxt;
-                        else foreach (AutomationElement candidate in play)
-                        {
-                            System.Windows.Rect middle = candidate.Current.BoundingRectangle;
-                            if (middle.Left > left.Right && middle.Right < right.Left && Math.Abs(middle.Top - left.Top) <= 20)
-                            { chosen = candidate; break; }
-                        }
-                        object pattern;
-                        if (chosen != null && chosen.TryGetCurrentPattern(InvokePattern.Pattern, out pattern))
-                        {
-                            ((InvokePattern)pattern).Invoke();
-                            return true;
-                        }
-                    }
-            }
-            catch (ElementNotAvailableException) { }
-            catch (InvalidOperationException) { }
-            catch (COMException) { }
-            return false;
+            SpotifySession.Control(action);
         }
 
         public static void ToggleDiscordVoice(bool deafen)
         {
-            IntPtr window = FindWindow("Discord", null, null);
+            IntPtr window = FindWindow("Discord", null, null, true);
             if (window == IntPtr.Zero) throw new InvalidOperationException("Discord no tiene una ventana disponible. ShortcutTasker no abrirá la aplicación para ejecutar esta acción.");
             AutomationElement root = AutomationElement.FromHandle(window);
             AutomationElementCollection buttons = root.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
             AutomationElement chosen = null;
+            bool useToggle = false;
             foreach (AutomationElement button in buttons)
             {
                 string name;
                 try { name = button.Current.Name ?? ""; }
                 catch (ElementNotAvailableException) { continue; }
-                if (!IsVoiceButton(button, deafen, name)) continue;
+                if (!button.Current.IsEnabled || !IsVoiceButton(button, deafen, name)) continue;
                 object pattern;
-                if (!button.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) continue;
+                bool toggle = button.TryGetCurrentPattern(TogglePattern.Pattern, out pattern);
+                if (!toggle && !button.TryGetCurrentPattern(InvokePattern.Pattern, out pattern)) continue;
                 if (chosen != null) throw new InvalidOperationException("Discord muestra más de un control válido; no se cambió ningún ajuste.");
                 chosen = button;
+                useToggle = toggle;
             }
             if (chosen == null)
                 throw new InvalidOperationException(deafen
                     ? "No se encuentra el botón de ensordecimiento de Discord. Comprueba que Discord está abierto y conectado a una llamada."
                     : "No se encuentra el botón de micrófono de Discord. Comprueba que Discord está abierto y conectado a una llamada.");
-            ((InvokePattern)chosen.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+            if (useToggle) ((TogglePattern)chosen.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+            else ((InvokePattern)chosen.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         }
 
         private static bool IsVoiceButton(AutomationElement button, bool deafen, string name)
@@ -290,7 +240,7 @@ namespace AtajosLibres
             return value;
         }
 
-        private static IntPtr FindWindow(string process, string fullPath, string title)
+        private static IntPtr FindWindow(string process, string fullPath, string title, bool includeHidden = false)
         {
             if (string.IsNullOrEmpty(process)) return IntPtr.Zero;
             HashSet<int> ids = new HashSet<int>();
@@ -306,18 +256,32 @@ namespace AtajosLibres
                 finally { running.Dispose(); }
             }
             IntPtr found = IntPtr.Zero;
+            IntPtr hidden = IntPtr.Zero;
             EnumWindows(delegate(IntPtr window, IntPtr data)
             {
                 uint pid;
                 GetWindowThreadProcessId(window, out pid);
-                if (ids.Contains((int)pid) && IsWindowVisible(window) && MatchesTitle(window, title))
+                if (!ids.Contains((int)pid) || !MatchesTitle(window, title)) return true;
+                if (IsWindowVisible(window))
                 {
                     found = window;
                     return false;
                 }
+                if (includeHidden && hidden == IntPtr.Zero)
+                {
+                    int length = GetWindowTextLength(window);
+                    if (length > 0)
+                    {
+                        StringBuilder caption = new StringBuilder(length + 1);
+                        GetWindowText(window, caption, caption.Capacity);
+                        string value = caption.ToString();
+                        if (value.Equals("Discord", StringComparison.OrdinalIgnoreCase) ||
+                            value.EndsWith(" - Discord", StringComparison.OrdinalIgnoreCase)) hidden = window;
+                    }
+                }
                 return true;
             }, IntPtr.Zero);
-            return found;
+            return found != IntPtr.Zero ? found : hidden;
         }
 
         private static bool MatchesTitle(IntPtr window, string title)

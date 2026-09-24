@@ -332,6 +332,8 @@ namespace AtajosLibres
         private ComboBox keyBox, actionBox, mediaBox, appActionBox, appKeyBox;
         private Label targetLabel, processLabel, appActionLabel, appKeyLabel, appModLabel, note;
         private Button browse, installedButton, runningButton, saveButton, cancelButton;
+        private Panel editorFooter;
+        private FlowLayoutPanel appModsPanel;
         private string selectedAppLaunchTarget = "", selectedAppName = "", selectedWindowTitle = "";
         private bool changingAppSelection;
         private bool originalEnabled;
@@ -350,6 +352,7 @@ namespace AtajosLibres
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
+            DoubleBuffered = true;
             BuildUi();
             originalEnabled = existing == null || existing.Enabled;
             if (existing != null) Fill(existing);
@@ -436,25 +439,28 @@ namespace AtajosLibres
             runningButton.Click += SelectRunningApp;
             Controls.Add(runningButton);
             appModLabel = LabelAt("Teclas que recibe la aplicación", 444);
-            FlowLayoutPanel appMods = new FlowLayoutPanel { Left = 24, Top = 468, Width = 277, Height = 35 };
+            appModsPanel = new FlowLayoutPanel { Left = 24, Top = 468, Width = 277, Height = 35 };
             appWin = new CheckBox { Text = "Win", Width = 52 }; appCtrl = new CheckBox { Text = "Ctrl", Width = 54 };
             appAlt = new CheckBox { Text = "Alt", Width = 51 }; appShift = new CheckBox { Text = "Mayús", Width = 72 };
-            appMods.Controls.AddRange(new Control[] { appWin, appCtrl, appAlt, appShift }); Controls.Add(appMods);
+            appModsPanel.Controls.AddRange(new Control[] { appWin, appCtrl, appAlt, appShift }); Controls.Add(appModsPanel);
             appKeyLabel = new Label { Text = "Tecla", Left = 312, Top = 444, Width = 192, Height = 21, Font = new Font("Segoe UI Semibold", 9F) };
             Controls.Add(appKeyLabel);
             appKeyBox = new ComboBox { Left = 312, Top = 468, Width = 192, DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (KeyOption option in keyBox.Items) appKeyBox.Items.Add(new KeyOption(option.Label, option.Code));
             appKeyBox.SelectedIndex = 0; Controls.Add(appKeyBox);
 
-            note = new Label { Text = "El atajo se ejecuta cuando sueltas las teclas modificadoras.",
-                 Left = 24, Top = 530, Width = 480, Height = 34, ForeColor = Ui.Muted };
-            Controls.Add(note);
+            editorFooter = new Panel { Dock = DockStyle.Bottom, Height = 120, BackColor = Color.White };
+            note = new Label { Text = "El atajo se ejecuta al pulsar la última tecla.",
+                 Left = 24, Top = 0, Width = 480, Height = 54, ForeColor = Ui.Muted };
+            editorFooter.Controls.Add(note);
 
             saveButton = Ui.Button("Guardar atajo", 122); Ui.Primary(saveButton);
-            saveButton.Left = 270; saveButton.Top = 575; saveButton.Click += Save;
+            saveButton.Left = 270; saveButton.Top = 65; saveButton.Click += Save;
             cancelButton = Ui.Button("Cancelar", 105);
-            cancelButton.Left = 400; cancelButton.Top = 575; cancelButton.DialogResult = DialogResult.Cancel;
-            Controls.Add(saveButton); Controls.Add(cancelButton);
+            cancelButton.Left = 400; cancelButton.Top = 65; cancelButton.DialogResult = DialogResult.Cancel;
+            editorFooter.Controls.Add(saveButton); editorFooter.Controls.Add(cancelButton);
+            Controls.Add(editorFooter);
+            editorFooter.BringToFront();
             AcceptButton = saveButton; CancelButton = cancelButton;
             UpdateTargetUi();
         }
@@ -476,25 +482,23 @@ namespace AtajosLibres
             appActionLabel.Visible = appActionBox.Visible = hasApp;
             AppActionOption selected = appActionBox.SelectedItem as AppActionOption;
             bool sendKeys = hasApp && selected != null && selected.Action == "appkey";
-            bool immediate = hasApp && selected != null &&
-                (selected.Action.StartsWith("discord_", StringComparison.Ordinal) || selected.Action.StartsWith("spotify_", StringComparison.Ordinal));
             processLabel.Visible = processBox.Visible = runningButton.Visible = sendKeys;
             appModLabel.Visible = appKeyLabel.Visible = appKeyBox.Visible = sendKeys;
+            appModsPanel.Visible = sendKeys;
             appWin.Visible = appCtrl.Visible = appAlt.Visible = appShift.Visible = sendKeys;
-            note.Text = immediate
-                ? "La acción se ejecuta al pulsar la última tecla y no abre la ventana de la aplicación."
+            note.Text = sendKeys
+                ? "Usa el atajo que ya tiene esa app (por ejemplo, Ctrl+M). Se mostrará su ventana para recibirlo. Se activa al pulsar la última tecla."
                 : action == 0 && !hasApp && string.IsNullOrWhiteSpace(targetBox.Text)
-                    ? "Elige una aplicación en «Instaladas…» para ver sus acciones."
-                    : hasApp && selected != null && selected.Action == "open"
-                        ? "Abrir o mostrar la aplicación se ejecuta al soltar la combinación."
-                        : "El atajo se ejecuta cuando sueltas las teclas modificadoras.";
+                    ? "Elige una aplicación en «Instaladas…» para ver sus acciones. El atajo se activa al pulsar la última tecla."
+                    : "El atajo se activa al pulsar la última tecla. Los controles de Discord y Spotify funcionan en segundo plano.";
             int noteTop = sendKeys ? 530 : hasApp ? 405 : action == 2 ? 350 : 310;
-            note.Top = noteTop;
-            saveButton.Top = cancelButton.Top = noteTop + 45;
-            int height = noteTop + 100;
+            int height = (int)Math.Round((noteTop + 120) * DeviceDpi / 96.0);
             if (ClientSize.Height != height)
             {
+                SuspendLayout();
                 ClientSize = new Size(ClientSize.Width, height);
+                ResumeLayout(true);
+                Invalidate(true);
                 if (Visible) CenterToParent();
             }
             if (action == 0) targetBox.PlaceholderTextCompat("C:\\Ruta\\Programa.exe o shell:AppsFolder\\...");
